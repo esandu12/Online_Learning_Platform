@@ -22,6 +22,9 @@ export default function CourseManagement() {
   const [form, setForm] = useState(emptyForm);
   const [editing, setEditing] = useState(false);
   const [search, setSearch] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [levelFilter, setLevelFilter] = useState("all");
+  const [sortBy, setSortBy] = useState("name-asc");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -152,14 +155,39 @@ export default function CourseManagement() {
     }
   }
 
-  const filtered = courses.filter((course) => {
-    const query = search.toLowerCase();
-    return (
-      course.course_name.toLowerCase().includes(query) ||
-      (course.category_name || "").toLowerCase().includes(query) ||
-      course.course_id.toLowerCase().includes(query)
-    );
-  });
+
+  const filtered = courses
+    .filter((course) => {
+      const query = search.toLowerCase().trim();
+
+      const matchesSearch =
+        course.course_name.toLowerCase().includes(query) ||
+        course.course_id.toLowerCase().includes(query) ||
+        (course.category_name || "").toLowerCase().includes(query);
+
+      const matchesCategory =
+        categoryFilter === "all" ||
+        course.category_id === categoryFilter;
+
+      const matchesLevel =
+        levelFilter === "all" ||
+        course.level === levelFilter;
+
+      return matchesSearch && matchesCategory && matchesLevel;
+    })
+    .sort((a, b) => {
+      switch (sortBy) {
+        case "name-desc":
+          return b.course_name.localeCompare(a.course_name);
+        case "price-low":
+          return Number(a.price) - Number(b.price);
+        case "price-high":
+          return Number(b.price) - Number(a.price);
+        default:
+          return a.course_name.localeCompare(b.course_name);
+      }
+    });
+
 
   const fieldStyle =
     "w-full rounded-lg border border-slate-300 bg-white p-3 text-slate-900";
@@ -302,6 +330,51 @@ export default function CourseManagement() {
               onChange={(e) => setSearch(e.target.value)}
               className="w-full rounded-lg border p-3 md:w-80"
             />
+          </div>
+
+          <div className="mb-6 grid gap-3 md:grid-cols-3">
+
+            <select
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value)}
+              aria-label="Filter courses by category"
+              className="rounded-lg border p-3"
+            >
+              <option value="all">All Categories</option>
+              {categories.map((category) => (
+                <option
+                  key={category.category_id}
+                  value={category.category_id}
+                >
+                  {category.category_name}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={levelFilter}
+              onChange={(e) => setLevelFilter(e.target.value)}
+              aria-label="Filter courses by level"
+              className="rounded-lg border p-3"
+            >
+              <option value="all">All Levels</option>
+              <option value="Beginner">Beginner</option>
+              <option value="Intermediate">Intermediate</option>
+              <option value="Advanced">Advanced</option>
+            </select>
+
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              aria-label="Sort courses"
+              className="rounded-lg border p-3"
+            >
+              <option value="name-asc">Name A–Z</option>
+              <option value="name-desc">Name Z–A</option>
+              <option value="price-low">Price: Low to High</option>
+              <option value="price-high">Price: High to Low</option>
+            </select>
+
           </div>
 
           {loading ? (
