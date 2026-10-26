@@ -52,6 +52,77 @@ router.get("/", async (req, res) => {
   }
 });
 
+
+router.get("/:id/details", async (req, res) => {
+  try {
+    const courseId = req.params.id;
+
+    // Get course with instructor and category
+    const [courses] = await db.execute(
+      `SELECT
+         c.*,
+         i.instructor_name,
+         i.specialization,
+         cat.category_name
+       FROM course c
+       LEFT JOIN instructor i
+         ON c.instructor_id = i.instructor_id
+       LEFT JOIN category cat
+         ON c.category_id = cat.category_id
+       WHERE c.course_id = ?`,
+      [courseId]
+    );
+
+    if (courses.length === 0) {
+      return res.status(404).json({
+        error: "Course not found"
+      });
+    }
+
+    // Get lessons
+    const [lessons] = await db.execute(
+      `SELECT lesson_id, lesson_title,
+              lesson_duration, lesson_url
+       FROM lesson
+       WHERE course_id = ?
+       ORDER BY lesson_id`,
+      [courseId]
+    );
+
+    // Get assignments
+    const [assignments] = await db.execute(
+      `SELECT assignment_id, assignment_title,
+              deadline, marks
+       FROM assignment
+       WHERE course_id = ?
+       ORDER BY deadline`,
+      [courseId]
+    );
+
+    // Get quizzes
+    const [quizzes] = await db.execute(
+      `SELECT quiz_id, total_marks, duration, quiz_date
+       FROM quiz
+       WHERE course_id = ?
+       ORDER BY quiz_date`,
+      [courseId]
+    );
+
+    res.json({
+      course: courses[0],
+      lessons,
+      assignments,
+      quizzes
+    });
+  } catch (error) {
+    console.error("Course details error:", error.message);
+    res.status(500).json({
+      error: "Failed to load course details"
+    });
+  }
+});
+
+
 // READ one course
 router.get("/:id", async (req, res) => {
   try {

@@ -419,6 +419,7 @@ export default function CourseManagement() {
                 <p className="p-5 text-center text-slate-500">
                   No courses found.
                 </p>
+
               )}
             </div>
           )}

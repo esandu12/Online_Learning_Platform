@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 
 const API_URL = "http://127.0.0.1:5001/api";
 
@@ -79,6 +80,12 @@ export default function Home() {
               <p className="mt-5 text-lg font-bold">
                 LKR {Number(course.price).toLocaleString()}
               </p>
+              <Link
+                href={`/courses/${course.course_id}`}
+                className="mt-5 block rounded-lg bg-blue-600 px-4 py-3 text-center font-medium text-white hover:bg-blue-700"
+              >
+                View Course
+              </Link>
             </article>
           ))}
         </div>
