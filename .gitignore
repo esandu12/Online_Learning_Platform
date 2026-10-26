@@ -1,0 +1,7 @@
+node_modules/
+.env
+.env.*
+!.env.example
+.next/
+.DS_Store
+database/Online_Learning_Platform.sql
