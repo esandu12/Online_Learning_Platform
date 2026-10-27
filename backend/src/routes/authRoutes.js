@@ -9,6 +9,7 @@ const {
   authenticate, requireRole, requireSameOrigin, sessionCookie, clearSessionCookie,
   rateLimitAuth,
 } = require("../auth/middleware");
+const { hashSessionToken } = require("../auth/security");
 
 const router = express.Router();
 const SESSION_DAYS = 7;
@@ -24,6 +25,21 @@ async function createSession(accountId, res) {
     [hash, accountId]
   );
   res.setHeader("Set-Cookie", sessionCookie(token, SESSION_DAYS * 24 * 60 * 60));
+}
+
+async function createSessionRecord(executor, accountId) {
+  const { token, hash } = createSessionToken();
+  await executor.execute(
+    "INSERT INTO auth_session (session_id, account_id, expires_at) VALUES (?, ?, DATE_ADD(UTC_TIMESTAMP(), INTERVAL 7 DAY))",
+    [hash, accountId]
+  );
+  return sessionCookie(token, SESSION_DAYS * 24 * 60 * 60);
+}
+
+async function revokeSession(executor, token) {
+  if (!token) return false;
+  await executor.execute("DELETE FROM auth_session WHERE session_id=?", [hashSessionToken(token)]);
+  return true;
 }
 
 router.post("/students/signup", rateLimitAuth(), requireSameOrigin, async (req, res, next) => {
@@ -57,8 +73,9 @@ router.post("/students/signup", rateLimitAuth(), requireSameOrigin, async (req, 
          VALUES (?, ?, ?, 'student', 'active', ?)`,
         [accountId, email, passwordHash, studentId]
       );
+      const cookie = await createSessionRecord(connection, accountId);
       await connection.commit();
-      await createSession(accountId, res);
+      res.setHeader("Set-Cookie", cookie);
       return res.status(201).json({ user: { id: accountId, email, role: "student", status: "active", profileId: studentId, name: `${firstName.trim()} ${lastName.trim()}` } });
     } catch (error) {
       await connection.rollback();
@@ -119,7 +136,14 @@ router.post("/login", rateLimitAuth({ maximum: 8 }), requireSameOrigin, async (r
     return sendValidationError(res, "Enter a valid email and password.");
   }
   try {
-    const [rows] = await db.execute("SELECT * FROM auth_user WHERE email=? LIMIT 1", [email]);
+    const [rows] = await db.execute(
+      `SELECT u.*, CASE WHEN u.role='student' THEN CONCAT(s.first_name, ' ', s.last_name)
+                        WHEN u.role='instructor' THEN i.instructor_name ELSE 'Administrator' END AS display_name
+       FROM auth_user u LEFT JOIN student s ON s.student_id=u.student_id
+       LEFT JOIN instructor i ON i.instructor_id=u.instructor_id
+       WHERE u.email=? LIMIT 1`,
+      [email]
+    );
     const user = rows[0];
     if (!user || !(await verifyPassword(password, user.password_hash))) {
       return res.status(401).json({ error: "Email or password is incorrect" });
@@ -139,10 +163,7 @@ router.post("/logout", requireSameOrigin, async (req, res, next) => {
   res.setHeader("Set-Cookie", clearSessionCookie());
   try {
     const token = require("../auth/middleware").readCookie(req.headers.cookie, "olp_session");
-    if (token) {
-      const { hashSessionToken } = require("../auth/security");
-      await db.execute("DELETE FROM auth_session WHERE session_id=?", [hashSessionToken(token)]);
-    }
+    await revokeSession(db, token);
     return res.json({ message: "Signed out" });
   } catch (error) { return next(error); }
 });
@@ -197,12 +218,76 @@ router.post("/invitations/accept", rateLimitAuth(), requireSameOrigin, async (re
       [accountId, invitation.email, passwordHash, instructorId]
     );
     await connection.execute("UPDATE instructor_invitation SET accepted_at=UTC_TIMESTAMP() WHERE invitation_id=?", [invitation.invitation_id]);
+    const cookie = await createSessionRecord(connection, accountId);
     await connection.commit();
-    await createSession(accountId, res);
+    res.setHeader("Set-Cookie", cookie);
     return res.status(201).json({ user: { id: accountId, email: invitation.email, role: "instructor", status: "active", profileId: instructorId, name: name.trim() } });
   } catch (error) {
     await connection.rollback();
     if (error.code === "ER_DUP_ENTRY") return res.status(409).json({ error: "An instructor account already uses this email" });
+    return next(error);
+  } finally { connection.release(); }
+});
+
+router.post("/admin/invitations", authenticate, requireRole("admin"), requireSameOrigin, async (req, res, next) => {
+  const email = normalizeEmail(req.body?.email);
+  if (!validateEmail(email)) return sendValidationError(res, "Enter a valid administrator email.");
+  try {
+    const [accounts] = await db.execute("SELECT account_id FROM auth_user WHERE email=?", [email]);
+    const [students] = await db.execute("SELECT student_id FROM student WHERE LOWER(email)=?", [email]);
+    const [instructors] = await db.execute("SELECT instructor_id FROM instructor WHERE LOWER(email)=?", [email]);
+    if (accounts.length || students.length || instructors.length) {
+      return res.status(409).json({ error: "An account or profile already uses this email" });
+    }
+    const { randomBytes, createHash } = require("node:crypto");
+    const token = randomBytes(32).toString("base64url");
+    const tokenHash = createHash("sha256").update(token).digest("hex");
+    await db.execute(
+      `INSERT INTO admin_invitation (invitation_id, email, token_hash, expires_at, created_by)
+       VALUES (?, ?, ?, DATE_ADD(UTC_TIMESTAMP(), INTERVAL 7 DAY), ?)`,
+      [randomUUID(), email, tokenHash, req.user.account_id]
+    );
+    return res.status(201).json({
+      invitation: `${process.env.FRONTEND_ORIGIN || "http://localhost:3000"}/invitations/admin/accept?token=${token}`,
+      expiresInDays: 7,
+    });
+  } catch (error) { return next(error); }
+});
+
+router.post("/admin/invitations/accept", rateLimitAuth(), requireSameOrigin, async (req, res, next) => {
+  const { token, password } = req.body || {};
+  if (typeof token !== "string" || token.length > 100 || !validatePassword(password)) {
+    return sendValidationError(res, "Use a valid invitation and a password of at least 12 characters.");
+  }
+  const { createHash } = require("node:crypto");
+  const tokenHash = createHash("sha256").update(token).digest("hex");
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [invitations] = await connection.execute(
+      "SELECT invitation_id, email FROM admin_invitation WHERE token_hash=? AND accepted_at IS NULL AND expires_at > UTC_TIMESTAMP() FOR UPDATE",
+      [tokenHash]
+    );
+    if (!invitations.length) {
+      await connection.rollback();
+      return res.status(400).json({ error: "This administrator invitation is invalid, expired, or already used" });
+    }
+    const invitation = invitations[0];
+    const accountId = randomUUID();
+    const passwordHash = await hashPassword(password);
+    await connection.execute(
+      `INSERT INTO auth_user (account_id, email, password_hash, role, status)
+       VALUES (?, ?, ?, 'admin', 'active')`,
+      [accountId, invitation.email, passwordHash]
+    );
+    await connection.execute("UPDATE admin_invitation SET accepted_at=UTC_TIMESTAMP() WHERE invitation_id=?", [invitation.invitation_id]);
+    const cookie = await createSessionRecord(connection, accountId);
+    await connection.commit();
+    res.setHeader("Set-Cookie", cookie);
+    return res.status(201).json({ user: { id: accountId, email: invitation.email, role: "admin", status: "active", profileId: null, name: "Administrator" } });
+  } catch (error) {
+    await connection.rollback();
+    if (error.code === "ER_DUP_ENTRY") return res.status(409).json({ error: "An account already uses this email" });
     return next(error);
   } finally { connection.release(); }
 });
@@ -242,3 +327,4 @@ router.get("/instructor/courses", authenticate, requireRole("instructor"), async
 });
 
 module.exports = router;
+module.exports.revokeSession = revokeSession;

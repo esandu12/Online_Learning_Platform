@@ -67,3 +67,10 @@ test("instructor approval controls require the administrator role", () => {
   runWrongRoleGuard(findRoute("/api/auth", "GET", "/admin/instructors"), "student");
   runWrongRoleGuard(findRoute("/api/auth", "POST", "/admin/instructors/:accountId/approve"), "instructor");
 });
+
+test("additional administrator invitations require an authenticated administrator", () => {
+  const route = findRoute("/api/auth", "POST", "/admin/invitations");
+  runUnauthenticatedGuard(route);
+  runWrongRoleGuard(route, "student");
+  runWrongRoleGuard(route, "instructor");
+});

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import AuthGate from "../../../components/AuthGate";
 import AccountMenu from "../../../components/AccountMenu";
+import AccountProfile from "../../../components/AccountProfile";
 import { apiRequest } from "../../../lib/api";
 
 function InstructorContent() {
@@ -12,6 +13,7 @@ function InstructorContent() {
   useEffect(() => { apiRequest("/auth/instructor/courses").then(setCourses).catch((err) => setError(err.message)); }, []);
   return <main className="min-h-screen bg-slate-50 p-6 text-slate-900"><div className="mx-auto max-w-5xl">
     <header className="flex items-center justify-between"><div><Link href="/" className="text-sm text-indigo-700">Course catalog</Link><h1 className="mt-2 text-3xl font-bold">Instructor dashboard</h1></div><AccountMenu /></header>
+    <AccountProfile />
     <section className="mt-8 rounded-2xl border bg-white p-7 shadow-sm"><h2 className="text-xl font-semibold">Your courses ({courses.length})</h2>
       {error && <p role="alert" className="mt-4 text-red-700">{error}</p>}
       {!error && courses.length === 0 && <p className="mt-4 text-slate-600">No courses are assigned to your account yet.</p>}

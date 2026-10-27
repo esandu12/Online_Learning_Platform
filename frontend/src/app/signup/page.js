@@ -10,20 +10,19 @@ export default function SignupPage() {
   const [role, setRole] = useState("student");
   const [form, setForm] = useState({ firstName: "", lastName: "", birthDate: "", name: "", specialization: "", email: "", password: "" });
   const [error, setError] = useState("");
-  const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   function change(event) { setForm({ ...form, [event.target.name]: event.target.value }); }
 
   async function submit(event) {
-    event.preventDefault(); setBusy(true); setError(""); setMessage("");
+    event.preventDefault(); setBusy(true); setError("");
     try {
       const endpoint = role === "student" ? "/auth/students/signup" : "/auth/instructors/signup";
       const body = role === "student"
         ? { firstName: form.firstName, lastName: form.lastName, birthDate: form.birthDate, email: form.email, password: form.password }
         : { name: form.name, specialization: form.specialization, email: form.email, password: form.password };
-      const result = await apiRequest(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      await apiRequest(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       if (role === "student") router.push("/dashboard/student");
-      else setMessage(result.message);
+      else router.push("/signup/pending");
     } catch (err) { setError(err.message); } finally { setBusy(false); }
   }
 
@@ -33,7 +32,6 @@ export default function SignupPage() {
     <p className="mt-2 text-slate-600">Administrators are created separately and cannot register here.</p>
     <label className="mt-6 block text-sm font-medium">Account type<select value={role} onChange={(e) => setRole(e.target.value)} className="mt-1 w-full rounded-lg border bg-white p-3"><option value="student">Student</option><option value="instructor">Instructor</option></select></label>
     {error && <p className="mt-5 rounded-lg bg-red-50 p-3 text-red-800" role="alert">{error}</p>}
-    {message && <p className="mt-5 rounded-lg bg-green-50 p-3 text-green-800" role="status">{message} <Link href="/login" className="font-semibold underline">Sign in after approval</Link></p>}
     <form onSubmit={submit} className="mt-5 grid gap-4 sm:grid-cols-2">
       {role === "student" ? <>
         <label className="text-sm font-medium">First name<input name="firstName" required maxLength={50} value={form.firstName} onChange={change} className="mt-1 w-full rounded-lg border p-3" /></label>

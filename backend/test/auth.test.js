@@ -2,8 +2,9 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const {
   normalizeEmail, validateEmail, validatePassword, validateBirthDate, hashPassword, verifyPassword,
-  createSessionToken, hashSessionToken,
+  createSessionToken, hashSessionToken, safeUser,
 } = require("../src/auth/security");
+const { revokeSession } = require("../src/routes/authRoutes");
 const {
   canViewStudentEnrollments, requireRole, sessionCookie, clearSessionCookie, readCookie,
 } = require("../src/auth/middleware");
@@ -37,6 +38,24 @@ test("session tokens are random and only a hash is suitable for database storage
   assert.notEqual(one.token, one.hash);
   assert.equal(one.hash, hashSessionToken(one.token));
   assert.match(one.hash, /^[a-f0-9]{64}$/);
+});
+
+test("sign out revokes only the session and preserves the account", async () => {
+  const calls = [];
+  const executor = { async execute(sql, params) { calls.push({ sql, params }); } };
+  const token = createSessionToken().token;
+  assert.equal(await revokeSession(executor, token), true);
+  assert.equal(calls.length, 1);
+  assert.match(calls[0].sql, /^DELETE FROM auth_session WHERE session_id=\?$/);
+  assert.equal(calls[0].params[0], hashSessionToken(token));
+  assert.equal(await revokeSession(executor, null), false);
+  assert.equal(calls.length, 1);
+});
+
+test("authenticated user profile data is available without exposing its password hash", () => {
+  assert.deepEqual(safeUser({ account_id: "account-1", email: "student@example.com", role: "student", status: "active", student_id: "STU123", display_name: "Student Example", password_hash: "secret" }), {
+    id: "account-1", email: "student@example.com", role: "student", status: "active", profileId: "STU123", name: "Student Example",
+  });
 });
 
 test("enrollment access is limited to the student or an administrator", () => {

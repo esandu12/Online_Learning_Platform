@@ -24,10 +24,11 @@ A local learning platform with student and instructor registration, administrato
 
 1. Keep the existing MySQL database and its data in place. Do not import the supplied dump over an existing database.
 2. In `backend`, copy `.env.example` to `.env` and set the connection values for the existing database. Never commit `.env`.
-3. Apply the additive authentication migration once from the repository root. It creates only new authentication tables and preserves existing rows:
+3. Apply the additive authentication migrations in order from the repository root. They create only new authentication tables and preserve existing rows:
 
    ```sh
    mysql -u YOUR_MYSQL_USER -p online_learning_platform < database/migrations/001_auth.sql
+   mysql -u YOUR_MYSQL_USER -p online_learning_platform < database/migrations/002_admin_invitations.sql
    ```
 
 4. Create the first administrator. Temporarily set `ADMIN_EMAIL` and `ADMIN_PASSWORD` (at least 12 characters) in ignored `backend/.env`, then run:
@@ -38,7 +39,7 @@ A local learning platform with student and instructor registration, administrato
    npm run admin:create
    ```
 
-   Remove those two bootstrap values from `.env` after the account is created. Admin signup is not available on the public site. To add another admin later, use a controlled database operation or a separately authenticated admin-management process.
+   Remove those two bootstrap values from `.env` after the account is created. Admin signup is not available on the public site. An existing admin can invite another administrator from the admin dashboard; the one-time invitation expires after seven days, and the invitee sets their own password.
 
    To replace the password for an existing admin, set a new `ADMIN_PASSWORD` for that admin's `ADMIN_EMAIL` in the ignored `.env`, then run `npm run admin:reset-password` from `backend`. This updates the stored hash and revokes that account's existing sessions. Remove the temporary values after success.
 
@@ -69,23 +70,23 @@ Backend tests cover validation, password hashing, session-cookie settings, role 
 
 ## Database safety
 
-`database/schema.sql` documents the project schema and contains destructive `DROP TABLE IF EXISTS` statements from the original dump. Treat it as a reference for an empty disposable database only; do not run it against the existing local database. The app does not seed, migrate, or reset database contents during startup. Apply `database/migrations/001_auth.sql` manually once; it is additive and leaves existing tables and records untouched. Course deletion is protected by foreign keys and returns a conflict when related records exist.
+`database/schema.sql` documents the project schema and contains destructive `DROP TABLE IF EXISTS` statements from the original dump. Treat it as a reference for an empty disposable database only; do not run it against the existing local database. The app does not seed, migrate, or reset database contents during startup. Apply `database/migrations/001_auth.sql` and `database/migrations/002_admin_invitations.sql` manually once, in order; both are additive and leave existing tables and records untouched. Course deletion is protected by foreign keys and returns a conflict when related records exist.
 
 See [the ERD](database/ERD.md) for tables, keys, and relationships. The two `page.js` files serve different routes: `frontend/src/app/page.js` is the catalog at `/`, while `frontend/src/app/courses/[id]/page.js` is the dynamic course details route at `/courses/:id`.
 
 ## Access control
 
 - Students can see only their own enrollments and can enroll only themselves. The student directory endpoint is admin-only.
-- Only admins can create, update, or delete courses, review instructor applications, and create invitations.
+- Only admins can create, update, or delete courses, review instructor applications, and create instructor or administrator invitations.
 - Instructors can see only courses assigned to their instructor profile. Public instructor signup remains pending until an admin approves it.
-- Public signup supports students and instructors, but not admins. The first admin is bootstrapped from the local CLI after applying the migration.
+- Public signup supports students and instructors, but not admins. Student signup creates a session and opens the student dashboard. Instructor signup shows a pending-approval page; after approval, the same credentials can be used to sign in. The first admin is bootstrapped from the local CLI after applying the migrations.
 - Session identifiers are random, stored only as SHA-256 hashes in MySQL, and sent in HttpOnly, SameSite=Lax cookies. Production mode also sets Secure. Keep the frontend and API on the same site for local cookie behavior.
 - Login and signup endpoints have per-IP in-memory throttling. For public deployment, use a shared rate limiter and HTTPS, and review operational controls before production use.
 
 ## Prototype limitations
 
 - This remains a local classroom prototype without payment processing or production hosting controls.
-- Student self-registration creates a new student record; it does not claim or attach an existing student record by email.
+- Student self-registration creates a new student record; it does not claim or attach an existing student record by email. Existing profile-only rows have no stored password to verify, so they need a separate verified account-claim process before they can sign in.
 - Course deletion can be blocked by linked lessons, assessments, enrollments, payments, or certificates.
 - The repository does not contain a database backup or student dataset. Keep those local and outside Git.
 
