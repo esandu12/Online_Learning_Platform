@@ -40,6 +40,8 @@ A local learning platform with student and instructor registration, administrato
 
    Remove those two bootstrap values from `.env` after the account is created. Admin signup is not available on the public site. To add another admin later, use a controlled database operation or a separately authenticated admin-management process.
 
+   To replace the password for an existing admin, set a new `ADMIN_PASSWORD` for that admin's `ADMIN_EMAIL` in the ignored `.env`, then run `npm run admin:reset-password` from `backend`. This updates the stored hash and revokes that account's existing sessions. Remove the temporary values after success.
+
 5. Install and start the API:
 
    ```sh
