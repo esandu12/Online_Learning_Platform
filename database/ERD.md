@@ -20,6 +20,10 @@ erDiagram
   ASSIGNMENT ||--o{ STUDENT_ASSIGNMENT : receives
   STUDENT ||--o{ QUIZ_ATTEMPT : takes
   QUIZ ||--o{ QUIZ_ATTEMPT : records
+  AUTH_USER ||--o{ AUTH_SESSION : starts
+  AUTH_USER o|--o| STUDENT : account_for
+  AUTH_USER o|--o| INSTRUCTOR : account_for
+  AUTH_USER ||--o{ INSTRUCTOR_INVITATION : creates
 
   CATEGORY {
     varchar category_id PK
@@ -98,6 +102,29 @@ erDiagram
     varchar student_id FK
     varchar phone_number
   }
+  AUTH_USER {
+    char account_id PK
+    varchar email UK
+    varchar password_hash
+    enum role
+    enum status
+    varchar student_id FK
+    varchar instructor_id FK
+  }
+  AUTH_SESSION {
+    char session_id PK
+    char account_id FK
+    datetime expires_at
+  }
+  INSTRUCTOR_INVITATION {
+    char invitation_id PK
+    varchar email
+    char token_hash UK
+    datetime expires_at
+    char created_by FK
+  }
 ```
 
 Primary and foreign keys above follow the current SQL schema. The enrollment primary key is the `(student_id, course_id)` pair, which prevents a duplicate enrollment for the same student and course.
+
+The authentication tables are added by `migrations/001_auth.sql`; the original schema dump remains unchanged.

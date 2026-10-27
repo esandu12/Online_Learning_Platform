@@ -3,9 +3,10 @@ const express = require("express");
 const router = express.Router();
 const db = require("../config/db");
 const { validateEnrollment } = require("../validation/enrollmentValidation");
+const { authenticate, requireRole, canViewStudentEnrollments } = require("../auth/middleware");
 
-// GET - List students for enrollment selection
-router.get("/students", async (req, res) => {
+// Admin-only student directory.
+router.get("/students", authenticate, requireRole("admin"), async (req, res) => {
   try {
     const [students] = await db.execute(
       `SELECT student_id, first_name, last_name
@@ -23,7 +24,10 @@ router.get("/students", async (req, res) => {
 });
 
 // GET - Courses enrolled by one student
-router.get("/students/:studentId", async (req, res) => {
+router.get("/students/:studentId", authenticate, async (req, res) => {
+  if (!canViewStudentEnrollments(req.user, req.params.studentId)) {
+    return res.status(403).json({ error: "You can only view your own enrollments" });
+  }
   try {
     const [enrollments] = await db.execute(
       `SELECT
@@ -52,8 +56,11 @@ router.get("/students/:studentId", async (req, res) => {
 });
 
 // POST - Enroll student into course
-router.post("/", async (req, res) => {
-  const validation = validateEnrollment(req.body);
+router.post("/", authenticate, requireRole("student", "admin"), async (req, res) => {
+  const body = req.user.role === "student"
+    ? { ...req.body, student_id: req.user.student_id }
+    : req.body;
+  const validation = validateEnrollment(body);
   if (validation.error) return res.status(400).json({ error: validation.error });
   const { student_id, course_id } = validation.value;
 

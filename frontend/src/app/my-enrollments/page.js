@@ -1,146 +1,53 @@
-
 "use client";
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import AuthGate from "../../components/AuthGate";
+import AccountMenu from "../../components/AccountMenu";
 import { apiRequest } from "../../lib/api";
 
-export default function MyEnrollmentsPage() {
-  const [students, setStudents] = useState([]);
-  const [studentId, setStudentId] = useState("");
+function EnrollmentsContent() {
   const [enrollments, setEnrollments] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [courses, setCourses] = useState([]);
+  const [courseId, setCourseId] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
 
+  async function load() {
+    const [{ user }, courseRows] = await Promise.all([apiRequest("/auth/me"), apiRequest("/courses")]);
+    const rows = await apiRequest(`/enrollments/students/${encodeURIComponent(user.profileId)}`);
+    setEnrollments(rows);
+    setCourses(courseRows);
+  }
   useEffect(() => {
-    async function loadStudents() {
-      try {
-        const data = await apiRequest("/enrollments/students");
-        setStudents(data);
-      } catch (err) {
-        setError(err.message);
-      }
-    }
-
-    loadStudents();
+    Promise.all([apiRequest("/auth/me"), apiRequest("/courses")])
+      .then(async ([{ user }, courseRows]) => {
+        const rows = await apiRequest(`/enrollments/students/${encodeURIComponent(user.profileId)}`);
+        setEnrollments(rows);
+        setCourses(courseRows);
+      })
+      .catch((err) => setError(err.message))
+      .finally(() => setLoading(false));
   }, []);
 
-  useEffect(() => {
-    if (!studentId) return;
+  async function enroll(event) {
+    event.preventDefault(); setError(""); setMessage(""); setSaving(true);
+    try {
+      await apiRequest("/enrollments", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ course_id: courseId }) });
+      await load(); setMessage("You are enrolled in this course."); setCourseId("");
+    } catch (err) { setError(err.message); } finally { setSaving(false); }
+  }
 
-    const controller = new AbortController();
-
-    async function loadEnrollments() {
-      setLoading(true);
-      setError("");
-      setEnrollments([]);
-
-      try {
-        const data = await apiRequest(
-          `/enrollments/students/${encodeURIComponent(studentId)}`,
-          { signal: controller.signal }
-        );
-        setEnrollments(data);
-      } catch (err) {
-        if (err.name !== "AbortError") {
-          setError(err.message);
-        }
-      } finally {
-        if (!controller.signal.aborted) setLoading(false);
-      }
-    }
-
-    loadEnrollments();
-    return () => controller.abort();
-  }, [studentId]);
-
-  return (
-    <main className="min-h-screen bg-slate-50 p-6 text-slate-900">
-      <div className="mx-auto max-w-5xl">
-        <Link href="/" className="text-blue-600 hover:underline">
-          ← Back to Course Catalog
-        </Link>
-
-        <h1 className="mt-6 text-3xl font-bold">My Enrollments</h1>
-        <p className="mt-2 text-slate-500">
-          View the courses enrolled in by a student.
-        </p>
-
-        <section className="mt-8 rounded-xl border bg-white p-6">
-          <label htmlFor="student" className="block font-medium">
-            Select Student
-          </label>
-
-          <select
-            id="student"
-            value={studentId}
-            onChange={(e) => setStudentId(e.target.value)}
-            className="mt-3 w-full rounded-lg border bg-white p-3"
-          >
-            <option value="">Choose a student</option>
-            {students.map((student) => (
-              <option key={student.student_id} value={student.student_id}>
-                {student.first_name} {student.last_name}
-                {" "}({student.student_id})
-              </option>
-            ))}
-          </select>
-        </section>
-
-        {error && (
-          <p role="alert" className="mt-6 text-red-600">{error}</p>
-        )}
-
-        {loading && <p className="mt-6">Loading enrollments...</p>}
-
-        {!loading && !error && studentId && (
-          <section className="mt-8">
-            <h2 className="mb-5 text-2xl font-bold">
-              Enrolled Courses ({enrollments.length})
-            </h2>
-
-            {enrollments.length === 0 ? (
-              <p>No enrolled courses found for this student.</p>
-            ) : (
-              <div className="grid gap-5 md:grid-cols-2">
-                {enrollments.map((enrollment) => (
-                  <article
-                    key={enrollment.course_id}
-                    className="rounded-xl border bg-white p-6 shadow-sm"
-                  >
-                    <h3 className="text-xl font-bold">
-                      {enrollment.course_name}
-                    </h3>
-
-                    <p className="mt-3 text-slate-600">
-                      Level: {enrollment.level}
-                    </p>
-
-                    <p className="mt-1 text-slate-600">
-                      Duration: {enrollment.duration}
-                    </p>
-
-                    <p className="mt-1 text-slate-600">
-                      Enrolled: {
-                        enrollment.enrollment_date
-                          ? String(enrollment.enrollment_date).slice(0, 10)
-                          : "Not specified"
-                      }
-                    </p>
-
-                    <Link
-                      href={`/courses/${enrollment.course_id}`}
-                      className="mt-5 inline-block rounded-lg bg-blue-600 px-5 py-3 text-white"
-                    >
-                      View Course
-                    </Link>
-                  </article>
-                ))}
-              </div>
-            )}
-          </section>
-        )}
-      </div>
-    </main>
-  );
+  return <main className="min-h-screen bg-slate-50 p-6 text-slate-900"><div className="mx-auto max-w-5xl">
+    <header className="flex items-center justify-between"><div><Link href="/dashboard/student" className="text-sm text-indigo-700">← Student dashboard</Link><h1 className="mt-2 text-3xl font-bold">My enrollments</h1><p className="mt-1 text-slate-600">Only your courses are shown here.</p></div><AccountMenu /></header>
+    <section className="mt-7 rounded-2xl border bg-white p-6 shadow-sm"><h2 className="text-xl font-semibold">Enroll in a course</h2><form onSubmit={enroll} className="mt-4 flex flex-col gap-3 sm:flex-row"><select required value={courseId} onChange={(e) => setCourseId(e.target.value)} className="min-w-0 flex-1 rounded-lg border bg-white p-3"><option value="">Choose a course</option>{courses.filter((course) => !enrollments.some((item) => item.course_id === course.course_id)).map((course) => <option key={course.course_id} value={course.course_id}>{course.course_name}</option>)}</select><button disabled={saving || loading} className="rounded-lg bg-indigo-700 px-5 py-3 font-semibold text-white disabled:opacity-60">{saving ? "Enrolling…" : "Enroll"}</button></form></section>
+    {error && <p role="alert" className="mt-5 rounded-lg bg-red-50 p-3 text-red-800">{error}</p>}{message && <p role="status" className="mt-5 rounded-lg bg-green-50 p-3 text-green-800">{message}</p>}
+    {loading && <p className="mt-6" role="status">Loading your enrollments…</p>}
+    {!loading && enrollments.length === 0 && <p className="mt-6 rounded-xl border border-dashed bg-white p-8 text-center text-slate-600">You haven’t enrolled in a course yet.</p>}
+    {!loading && enrollments.length > 0 && <section className="mt-7 grid gap-5 md:grid-cols-2">{enrollments.map((item) => <article key={item.course_id} className="rounded-xl border bg-white p-6 shadow-sm"><h2 className="text-xl font-bold">{item.course_name}</h2><p className="mt-2 text-slate-600">{item.level || "All levels"} · {item.duration || "Flexible duration"}</p><p className="mt-2 text-sm text-slate-500">Enrolled: {item.enrollment_date ? String(item.enrollment_date).slice(0, 10) : "Not specified"}</p><Link href={`/courses/${encodeURIComponent(item.course_id)}`} className="mt-5 inline-block rounded-lg bg-indigo-700 px-4 py-2.5 text-white">View course</Link></article>)}</section>}
+  </div></main>;
 }
+
+export default function MyEnrollmentsPage() { return <AuthGate roles={["student"]}><EnrollmentsContent /></AuthGate>; }

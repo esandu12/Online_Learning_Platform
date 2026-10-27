@@ -55,6 +55,8 @@ export default function Home() {
             <Link href="/" aria-current="page" className="text-indigo-700">Courses</Link>
             <Link href="/my-enrollments" className="hover:text-indigo-700">My Enrollments</Link>
             <Link href="/admin/courses" className="hover:text-indigo-700">Manage Courses</Link>
+            <Link href="/login" className="hover:text-indigo-700">Sign in</Link>
+            <Link href="/signup" className="hover:text-indigo-700">Sign up</Link>
           </nav>
         </div>
       </header>

@@ -4,6 +4,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { apiRequest } from "../../../lib/api";
+import AuthGate from "../../../components/AuthGate";
 
 const emptyForm = {
   course_id: "",
@@ -15,7 +16,7 @@ const emptyForm = {
   category_id: "",
 };
 
-export default function CourseManagement() {
+function CourseManagementContent() {
   const [courses, setCourses] = useState([]);
   const [instructors, setInstructors] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -422,4 +423,8 @@ export default function CourseManagement() {
       </div>
     </main>
   );
+}
+
+export default function CourseManagement() {
+  return <AuthGate roles={["admin"]}><CourseManagementContent /></AuthGate>;
 }

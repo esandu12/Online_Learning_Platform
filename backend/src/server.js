@@ -6,12 +6,13 @@ const cors = require("cors");
 const db = require("./config/db");
 const courseRoutes = require("./routes/courseRoutes");
 const enrollmentRoutes = require("./routes/enrollmentRoutes");
+const authRoutes = require("./routes/authRoutes");
 
 const app = express();
 const PORT = process.env.PORT || 5001;
 
 // Middleware
-app.use(cors({ origin: process.env.FRONTEND_ORIGIN || "http://localhost:3000" }));
+app.use(cors({ origin: process.env.FRONTEND_ORIGIN || "http://localhost:3000", credentials: true }));
 app.use(express.json({ limit: "100kb" }));
 
 // Home route
@@ -44,13 +45,19 @@ app.get("/api/health", async (req, res) => {
 // Course CRUD routes
 app.use("/api/courses", courseRoutes);
 app.use("/api/enrollments", enrollmentRoutes);
+app.use("/api/auth", authRoutes);
 
 // Get all instructors
 app.get("/api/instructors", async (req, res) => {
   try {
     const [instructors] = await db.query(
-      `SELECT instructor_id, instructor_name
-       FROM instructor
+      `SELECT i.instructor_id, i.instructor_name
+       FROM instructor i
+       WHERE NOT EXISTS (
+         SELECT 1 FROM auth_user u WHERE u.instructor_id=i.instructor_id
+       ) OR EXISTS (
+         SELECT 1 FROM auth_user u WHERE u.instructor_id=i.instructor_id AND u.status='active'
+       )
        ORDER BY instructor_name`
     );
 
@@ -96,8 +103,10 @@ app.use((error, req, res, next) => {
 });
 
 // Start Express server
-app.listen(PORT, "127.0.0.1", () => {
-  console.log(
-    `Server running at http://127.0.0.1:${PORT}`
-  );
-});
+if (require.main === module) {
+  app.listen(PORT, "127.0.0.1", () => {
+    console.log(`Server running at http://127.0.0.1:${PORT}`);
+  });
+}
+
+module.exports = app;
