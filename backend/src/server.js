@@ -5,6 +5,7 @@ const express = require("express");
 const cors = require("cors");
 const db = require("./config/db");
 const courseRoutes = require("./routes/courseRoutes");
+const enrollmentRoutes = require("./routes/enrollmentRoutes");
 
 const app = express();
 const PORT = process.env.PORT || 5001;
@@ -42,6 +43,7 @@ app.get("/api/health", async (req, res) => {
 
 // Course CRUD routes
 app.use("/api/courses", courseRoutes);
+app.use("/api/enrollments", enrollmentRoutes);
 
 // Get all instructors
 app.get("/api/instructors", async (req, res) => {

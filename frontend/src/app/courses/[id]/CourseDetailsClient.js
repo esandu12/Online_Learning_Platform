@@ -10,6 +10,10 @@ export default function CourseDetailsClient({ courseId }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [students, setStudents] = useState([]);
+  const [selectedStudent, setSelectedStudent] = useState("");
+  const [enrollmentMessage, setEnrollmentMessage] = useState("");
+  const [enrolling, setEnrolling] = useState(false);
 
   useEffect(() => {
     if (!courseId) return;
@@ -40,6 +44,64 @@ export default function CourseDetailsClient({ courseId }) {
 
     loadDetails();
   }, [courseId]);
+
+
+useEffect(() => {
+  async function loadStudents() {
+    try {
+      const response = await fetch(
+        `${API}/enrollments/students`
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to load students");
+      }
+
+      const studentsData = await response.json();
+      setStudents(studentsData);
+    } catch (err) {
+      setEnrollmentMessage(err.message);
+    }
+  }
+
+  loadStudents();
+}, []);
+
+async function handleEnrollment() {
+  if (!selectedStudent) {
+    setEnrollmentMessage("Please select a student.");
+    return;
+  }
+
+  setEnrolling(true);
+  setEnrollmentMessage("");
+
+  try {
+    const response = await fetch(`${API}/enrollments`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        student_id: selectedStudent,
+        course_id: courseId,
+      }),
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result.error || "Enrollment failed");
+    }
+
+    setEnrollmentMessage("Student enrolled successfully!");
+  } catch (err) {
+    setEnrollmentMessage(err.message);
+  } finally {
+    setEnrolling(false);
+  }
+}
+
 
   if (loading) {
     return <main className="p-10">Loading course...</main>;
@@ -89,6 +151,53 @@ export default function CourseDetailsClient({ courseId }) {
             </span>
           </div>
         </section>
+
+
+        <section className="rounded-xl border bg-white p-6">
+        <h2 className="mb-4 text-2xl font-bold">
+            Enroll in This Course
+        </h2>
+
+        <p className="mb-4 text-sm text-slate-500">
+            Select an existing student to enroll in this course.
+        </p>
+
+        <div className="flex flex-col gap-3 sm:flex-row">
+            <select
+            value={selectedStudent}
+            onChange={(e) => setSelectedStudent(e.target.value)}
+            aria-label="Select student"
+            className="flex-1 rounded-lg border bg-white p-3"
+            >
+            <option value="">Select Student</option>
+
+            {students.map((student) => (
+                <option
+                key={student.student_id}
+                value={student.student_id}
+                >
+                {student.first_name} {student.last_name}
+                </option>
+            ))}
+            </select>
+
+            <button
+            type="button"
+            onClick={handleEnrollment}
+            disabled={enrolling || !selectedStudent}
+            className="rounded-lg bg-blue-600 px-6 py-3 font-medium text-white disabled:opacity-50"
+            >
+            {enrolling ? "Enrolling..." : "Enroll Now"}
+            </button>
+        </div>
+
+        {enrollmentMessage && (
+            <p role="status" className="mt-4 text-sm">
+            {enrollmentMessage}
+            </p>
+        )}
+        </section>
+
 
         <section className="rounded-xl border bg-white p-6">
           <h2 className="mb-4 text-2xl font-bold">Course Lessons</h2>

@@ -39,6 +39,28 @@ export default function Home() {
         <p className="text-sm text-slate-500">
           Explore courses and develop your skills
         </p>
+        <nav className="flex flex-wrap items-center gap-5">
+          <Link
+            href="/"
+            className="font-medium text-slate-700 hover:text-blue-600"
+          >
+            Courses
+          </Link>
+
+          <Link
+            href="/my-enrollments"
+            className="font-medium text-blue-600 hover:underline"
+          >
+            My Enrollments
+          </Link>
+
+          <Link
+            href="/admin/courses"
+            className="font-medium text-slate-700 hover:text-blue-600"
+          >
+            Manage Courses
+          </Link>
+        </nav>
       </header>
 
       <section className="mx-auto max-w-6xl px-6 py-12">
