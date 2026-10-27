@@ -2,8 +2,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-
-const API = "http://127.0.0.1:5001/api";
+import Link from "next/link";
+import { apiRequest } from "../../../lib/api";
 
 const emptyForm = {
   course_id: "",
@@ -31,14 +31,7 @@ export default function CourseManagement() {
   const [saving, setSaving] = useState(false);
 
   async function request(path, options) {
-    const response = await fetch(`${API}${path}`, options);
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data.error || "Request failed");
-    }
-
-    return data;
+    return apiRequest(path, options);
   }
 
   async function loadCourses() {
@@ -103,9 +96,11 @@ export default function CourseManagement() {
     setError("");
     setMessage("");
 
-    if (!form.course_id.trim() || !form.course_name.trim() ||
+    if (!form.course_id.trim() || form.course_id.trim().length > 10 ||
+        !form.course_name.trim() || form.course_name.trim().length > 100 ||
         !form.instructor_id || !form.category_id ||
-        form.price === "" || Number(form.price) < 0) {
+        form.price === "" || !Number.isFinite(Number(form.price)) || Number(form.price) < 0 ||
+        !/^\d+(\.\d{1,2})?$/.test(String(form.price))) {
       setError("Please complete all required fields correctly.");
       return;
     }
@@ -196,9 +191,9 @@ export default function CourseManagement() {
     <main className="min-h-screen bg-slate-50 p-6 text-slate-900">
       <div className="mx-auto max-w-6xl">
         <header className="mb-8">
-          <a href="/" className="text-blue-600 hover:underline">
+          <Link href="/" className="text-blue-600 hover:underline">
             ← Course Catalog
-          </a>
+          </Link>
           <h1 className="mt-3 text-3xl font-bold">
             Course Management
           </h1>

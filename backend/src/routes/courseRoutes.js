@@ -1,19 +1,14 @@
 const express = require("express");
 const router = express.Router();
 const db = require("../config/db");
+const { validateCourse } = require("../validation/courseValidation");
 
 // CREATE a course
 router.post("/", async (req, res) => {
   try {
-    const {
-      course_id, course_name, level,
-      duration, price, instructor_id, category_id
-    } = req.body;
-
-    if (!course_id || !course_name || !instructor_id || !category_id ||
-        !Number.isFinite(Number(price)) || Number(price) < 0) {
-      return res.status(400).json({ error: "Invalid course details" });
-    }
+    const validation = validateCourse(req.body, { creating: true });
+    if (validation.error) return res.status(400).json({ error: validation.error });
+    const { course_id, course_name, level, duration, price, instructor_id, category_id } = validation.value;
 
     await db.execute(
       `INSERT INTO course
@@ -140,12 +135,15 @@ router.get("/:id", async (req, res) => {
 // UPDATE course
 router.put("/:id", async (req, res) => {
   try {
-    const { course_name, level, duration, price, instructor_id, category_id } = req.body;
+    const validation = validateCourse(req.body);
+    if (validation.error) return res.status(400).json({ error: validation.error });
+    const { course_name, level, duration, price, instructor_id, category_id } = validation.value;
 
-    if (!course_name || !instructor_id || !category_id ||
-        !Number.isFinite(Number(price)) || Number(price) < 0) {
-      return res.status(400).json({ error: "Invalid course details" });
-    }
+    const [existing] = await db.execute(
+      "SELECT course_id FROM course WHERE course_id = ?",
+      [req.params.id]
+    );
+    if (!existing.length) return res.status(404).json({ error: "Course not found" });
 
     const [result] = await db.execute(
       `UPDATE course
@@ -155,10 +153,6 @@ router.put("/:id", async (req, res) => {
       [course_name, level || null, duration || null,
        price, instructor_id, category_id, req.params.id]
     );
-
-    if (!result.affectedRows) {
-      return res.status(404).json({ error: "Course not found" });
-    }
 
     res.json({ message: "Course updated" });
   } catch (error) {

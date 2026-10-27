@@ -2,6 +2,7 @@
 const express = require("express");
 const router = express.Router();
 const db = require("../config/db");
+const { validateEnrollment } = require("../validation/enrollmentValidation");
 
 // GET - List students for enrollment selection
 router.get("/students", async (req, res) => {
@@ -52,25 +53,16 @@ router.get("/students/:studentId", async (req, res) => {
 
 // POST - Enroll student into course
 router.post("/", async (req, res) => {
-  const { student_id, course_id } = req.body || {};
-
-  if (
-    typeof student_id !== "string" ||
-    typeof course_id !== "string" ||
-    !student_id.trim() ||
-    !course_id.trim()
-  ) {
-    return res.status(400).json({
-      error: "Valid student ID and course ID are required"
-    });
-  }
+  const validation = validateEnrollment(req.body);
+  if (validation.error) return res.status(400).json({ error: validation.error });
+  const { student_id, course_id } = validation.value;
 
   try {
     await db.execute(
       `INSERT INTO enrollment
        (student_id, course_id, enrollment_date)
        VALUES (?, ?, CURDATE())`,
-      [student_id.trim(), course_id.trim()]
+      [student_id, course_id]
     );
 
     res.status(201).json({

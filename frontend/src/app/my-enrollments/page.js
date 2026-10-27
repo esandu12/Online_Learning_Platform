@@ -3,8 +3,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-
-const API = "http://127.0.0.1:5001/api";
+import { apiRequest } from "../../lib/api";
 
 export default function MyEnrollmentsPage() {
   const [students, setStudents] = useState([]);
@@ -16,10 +15,7 @@ export default function MyEnrollmentsPage() {
   useEffect(() => {
     async function loadStudents() {
       try {
-        const response = await fetch(`${API}/enrollments/students`);
-        if (!response.ok) throw new Error("Failed to load students");
-
-        const data = await response.json();
+        const data = await apiRequest("/enrollments/students");
         setStudents(data);
       } catch (err) {
         setError(err.message);
@@ -30,11 +26,7 @@ export default function MyEnrollmentsPage() {
   }, []);
 
   useEffect(() => {
-    if (!studentId) {
-      setEnrollments([]);
-      setError("");
-      return;
-    }
+    if (!studentId) return;
 
     const controller = new AbortController();
 
@@ -44,16 +36,10 @@ export default function MyEnrollmentsPage() {
       setEnrollments([]);
 
       try {
-        const response = await fetch(
-          `${API}/enrollments/students/${encodeURIComponent(studentId)}`,
+        const data = await apiRequest(
+          `/enrollments/students/${encodeURIComponent(studentId)}`,
           { signal: controller.signal }
         );
-
-        if (!response.ok) {
-          throw new Error("Failed to load enrollments");
-        }
-
-        const data = await response.json();
         setEnrollments(data);
       } catch (err) {
         if (err.name !== "AbortError") {

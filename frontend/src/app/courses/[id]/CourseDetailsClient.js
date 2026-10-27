@@ -3,8 +3,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-
-const API = "http://127.0.0.1:5001/api";
+import { apiRequest } from "../../../lib/api";
 
 export default function CourseDetailsClient({ courseId }) {
   const [data, setData] = useState(null);
@@ -17,6 +16,7 @@ export default function CourseDetailsClient({ courseId }) {
 
   useEffect(() => {
     if (!courseId) return;
+    const controller = new AbortController();
 
     async function loadDetails() {
       setLoading(true);
@@ -24,40 +24,27 @@ export default function CourseDetailsClient({ courseId }) {
       setData(null);
 
       try {
-        const response = await fetch(
-          `${API}/courses/${encodeURIComponent(courseId)}/details`
+        const result = await apiRequest(
+          `/courses/${encodeURIComponent(courseId)}/details`,
+          { signal: controller.signal }
         );
-
-        const result = await response.json();
-
-        if (!response.ok) {
-          throw new Error(result.error || "Unable to load course");
-        }
-
         setData(result);
       } catch (err) {
-        setError(err.message);
+        if (err.name !== "AbortError") setError(err.message);
       } finally {
-        setLoading(false);
+        if (!controller.signal.aborted) setLoading(false);
       }
     }
 
     loadDetails();
+    return () => controller.abort();
   }, [courseId]);
 
 
 useEffect(() => {
   async function loadStudents() {
     try {
-      const response = await fetch(
-        `${API}/enrollments/students`
-      );
-
-      if (!response.ok) {
-        throw new Error("Failed to load students");
-      }
-
-      const studentsData = await response.json();
+      const studentsData = await apiRequest("/enrollments/students");
       setStudents(studentsData);
     } catch (err) {
       setEnrollmentMessage(err.message);
@@ -77,7 +64,7 @@ async function handleEnrollment() {
   setEnrollmentMessage("");
 
   try {
-    const response = await fetch(`${API}/enrollments`, {
+    const result = await apiRequest("/enrollments", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -87,12 +74,6 @@ async function handleEnrollment() {
         course_id: courseId,
       }),
     });
-
-    const result = await response.json();
-
-    if (!response.ok) {
-      throw new Error(result.error || "Enrollment failed");
-    }
 
     setEnrollmentMessage("Student enrolled successfully!");
   } catch (err) {
@@ -192,7 +173,7 @@ async function handleEnrollment() {
         </div>
 
         {enrollmentMessage && (
-            <p role="status" className="mt-4 text-sm">
+            <p role={enrollmentMessage.includes("successfully") ? "status" : "alert"} className="mt-4 text-sm">
             {enrollmentMessage}
             </p>
         )}
