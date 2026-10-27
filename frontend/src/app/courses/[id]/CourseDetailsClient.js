@@ -9,13 +9,17 @@ export default function CourseDetailsClient({ courseId }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
   const [students, setStudents] = useState([]);
   const [selectedStudent, setSelectedStudent] = useState("");
   const [enrollmentMessage, setEnrollmentMessage] = useState("");
+  const [enrollmentError, setEnrollmentError] = useState("");
   const [enrolling, setEnrolling] = useState(false);
 
+  // Load course details
   useEffect(() => {
     if (!courseId) return;
+
     const controller = new AbortController();
 
     async function loadDetails() {
@@ -28,89 +32,151 @@ export default function CourseDetailsClient({ courseId }) {
           `/courses/${encodeURIComponent(courseId)}/details`,
           { signal: controller.signal }
         );
-        setData(result);
+
+        if (!controller.signal.aborted) {
+          setData(result);
+        }
       } catch (err) {
-        if (err.name !== "AbortError") setError(err.message);
+        if (!controller.signal.aborted) {
+          setError(err.message || "Unable to load course details");
+        }
       } finally {
-        if (!controller.signal.aborted) setLoading(false);
+        if (!controller.signal.aborted) {
+          setLoading(false);
+        }
       }
     }
 
     loadDetails();
+
     return () => controller.abort();
   }, [courseId]);
 
+  // Load students for enrollment
+  useEffect(() => {
+    const controller = new AbortController();
 
-useEffect(() => {
-  async function loadStudents() {
+    async function loadStudents() {
+      try {
+        const result = await apiRequest(
+          "/enrollments/students",
+          { signal: controller.signal }
+        );
+
+        if (!controller.signal.aborted) {
+          setStudents(result);
+        }
+      } catch (err) {
+        if (!controller.signal.aborted) {
+          setEnrollmentError(
+            err.message || "Unable to load students"
+          );
+        }
+      }
+    }
+
+    loadStudents();
+
+    return () => controller.abort();
+  }, []);
+
+  // Enroll selected student
+  async function handleEnrollment() {
+    if (!selectedStudent || !courseId || enrolling) {
+      setEnrollmentError("Please select a student.");
+      return;
+    }
+
+    setEnrolling(true);
+    setEnrollmentMessage("");
+    setEnrollmentError("");
+
     try {
-      const studentsData = await apiRequest("/enrollments/students");
-      setStudents(studentsData);
+      const result = await apiRequest("/enrollments", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          student_id: selectedStudent,
+          course_id: courseId,
+        }),
+      });
+
+      setEnrollmentMessage(
+        result.message || "Student enrolled successfully!"
+      );
     } catch (err) {
-      setEnrollmentMessage(err.message);
+      setEnrollmentError(
+        err.message || "Failed to enroll student"
+      );
+    } finally {
+      setEnrolling(false);
     }
   }
 
-  loadStudents();
-}, []);
-
-async function handleEnrollment() {
-  if (!selectedStudent) {
-    setEnrollmentMessage("Please select a student.");
-    return;
-  }
-
-  setEnrolling(true);
-  setEnrollmentMessage("");
-
-  try {
-    const result = await apiRequest("/enrollments", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        student_id: selectedStudent,
-        course_id: courseId,
-      }),
-    });
-
-    setEnrollmentMessage("Student enrolled successfully!");
-  } catch (err) {
-    setEnrollmentMessage(err.message);
-  } finally {
-    setEnrolling(false);
-  }
-}
-
-
   if (loading) {
-    return <main className="p-10">Loading course...</main>;
-  }
-
-  if (error) {
     return (
-      <main className="p-10 text-red-600" role="alert">
-        {error}
+      <main className="min-h-screen bg-slate-50 p-10 text-slate-900">
+        Loading course details...
       </main>
     );
   }
 
-  if (!data) return null;
+  if (error) {
+    return (
+      <main className="min-h-screen bg-slate-50 p-10">
+        <p role="alert" className="text-red-600">
+          {error}
+        </p>
 
-  const { course, lessons, assignments, quizzes } = data;
+        <Link href="/" className="mt-5 inline-block text-blue-600">
+          ← Back to Courses
+        </Link>
+      </main>
+    );
+  }
+
+  if (!data || !data.course) {
+    return (
+      <main className="p-10">
+        Course not found.
+      </main>
+    );
+  }
+
+  const {
+    course,
+    lessons = [],
+    assignments = [],
+    quizzes = [],
+  } = data;
 
   return (
     <main className="min-h-screen bg-slate-50 text-slate-900">
+
+      {/* Navigation */}
       <header className="border-b bg-white px-6 py-5">
-        <div className="mx-auto max-w-5xl">
-          <Link href="/" className="text-blue-600">
+        <div className="mx-auto flex max-w-5xl flex-wrap justify-between gap-4">
+          <Link
+            href="/"
+            className="font-medium text-blue-600 hover:underline"
+          >
             ← All Courses
+          </Link>
+
+          <Link
+            href="/my-enrollments"
+            className="font-medium text-blue-600 hover:underline"
+          >
+            My Enrollments
           </Link>
         </div>
       </header>
 
       <div className="mx-auto max-w-5xl space-y-8 px-6 py-10">
+
+        {/* Course Information */}
         <section className="rounded-2xl bg-slate-900 p-8 text-white">
           <p className="text-sm text-blue-300">
             {course.category_name}
@@ -124,79 +190,113 @@ async function handleEnrollment() {
             Instructor: {course.instructor_name}
           </p>
 
+          {course.specialization && (
+            <p className="mt-2 text-sm text-slate-400">
+              Specialization: {course.specialization}
+            </p>
+          )}
+
           <div className="mt-6 flex flex-wrap gap-4">
-            <span>{course.level}</span>
-            <span>{course.duration}</span>
-            <span>
+            <span className="rounded-lg bg-slate-800 px-4 py-2">
+              {course.level}
+            </span>
+
+            <span className="rounded-lg bg-slate-800 px-4 py-2">
+              {course.duration}
+            </span>
+
+            <span className="rounded-lg bg-blue-600 px-4 py-2 font-bold">
               LKR {Number(course.price).toLocaleString()}
             </span>
           </div>
         </section>
 
-
-        <section className="rounded-xl border bg-white p-6">
-        <h2 className="mb-4 text-2xl font-bold">
+        {/* Student Enrollment */}
+        <section className="rounded-xl border bg-white p-6 shadow-sm">
+          <h2 className="mb-4 text-2xl font-bold">
             Enroll in This Course
-        </h2>
+          </h2>
 
-        <p className="mb-4 text-sm text-slate-500">
-            Select an existing student to enroll in this course.
-        </p>
+          <p className="mb-5 text-sm text-slate-500">
+            Select an existing student and enroll in this course.
+          </p>
 
-        <div className="flex flex-col gap-3 sm:flex-row">
+          <div className="flex flex-col gap-3 sm:flex-row">
             <select
-            value={selectedStudent}
-            onChange={(e) => setSelectedStudent(e.target.value)}
-            aria-label="Select student"
-            className="flex-1 rounded-lg border bg-white p-3"
+              value={selectedStudent}
+              onChange={(e) => {
+                setSelectedStudent(e.target.value);
+                setEnrollmentMessage("");
+                setEnrollmentError("");
+              }}
+              aria-label="Select Student"
+              className="flex-1 rounded-lg border border-slate-300 bg-white p-3"
             >
-            <option value="">Select Student</option>
+              <option value="">Select Student</option>
 
-            {students.map((student) => (
+              {students.map((student) => (
                 <option
-                key={student.student_id}
-                value={student.student_id}
+                  key={student.student_id}
+                  value={student.student_id}
                 >
-                {student.first_name} {student.last_name}
+                  {student.first_name} {student.last_name}
+                  {" "}({student.student_id})
                 </option>
-            ))}
+              ))}
             </select>
 
             <button
-            type="button"
-            onClick={handleEnrollment}
-            disabled={enrolling || !selectedStudent}
-            className="rounded-lg bg-blue-600 px-6 py-3 font-medium text-white disabled:opacity-50"
+              type="button"
+              onClick={handleEnrollment}
+              disabled={enrolling || !selectedStudent}
+              className="rounded-lg bg-blue-600 px-6 py-3 font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
-            {enrolling ? "Enrolling..." : "Enroll Now"}
+              {enrolling ? "Enrolling..." : "Enroll Now"}
             </button>
-        </div>
+          </div>
 
-        {enrollmentMessage && (
-            <p role={enrollmentMessage.includes("successfully") ? "status" : "alert"} className="mt-4 text-sm">
-            {enrollmentMessage}
+          {enrollmentMessage && (
+            <p
+              role="status"
+              className="mt-4 rounded-lg bg-green-50 p-3 text-green-700"
+            >
+              {enrollmentMessage}
             </p>
-        )}
+          )}
+
+          {enrollmentError && (
+            <p
+              role="alert"
+              className="mt-4 rounded-lg bg-red-50 p-3 text-red-700"
+            >
+              {enrollmentError}
+            </p>
+          )}
         </section>
 
-
-        <section className="rounded-xl border bg-white p-6">
-          <h2 className="mb-4 text-2xl font-bold">Course Lessons</h2>
+        {/* Course Lessons */}
+        <section className="rounded-xl border bg-white p-6 shadow-sm">
+          <h2 className="mb-4 text-2xl font-bold">
+            Course Lessons ({lessons.length})
+          </h2>
 
           {lessons.length === 0 ? (
-            <p>No lessons available yet.</p>
+            <p className="text-slate-500">
+              No lessons available yet.
+            </p>
           ) : (
             <div className="space-y-3">
               {lessons.map((lesson, index) => (
                 <div
                   key={lesson.lesson_id}
-                  className="flex items-center justify-between rounded-lg border p-4"
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-4"
                 >
                   <div>
                     <p className="font-semibold">
                       {index + 1}. {lesson.lesson_title}
                     </p>
-                    <p className="text-sm text-slate-500">
+
+                    <p className="mt-1 text-sm text-slate-500">
                       {lesson.lesson_duration}
                     </p>
                   </div>
@@ -206,7 +306,7 @@ async function handleEnrollment() {
                       href={lesson.lesson_url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-blue-600 hover:underline"
+                      className="rounded-lg bg-blue-50 px-4 py-2 font-medium text-blue-600 hover:bg-blue-100"
                     >
                       View Lesson
                     </a>
@@ -217,11 +317,16 @@ async function handleEnrollment() {
           )}
         </section>
 
-        <section className="rounded-xl border bg-white p-6">
-          <h2 className="mb-4 text-2xl font-bold">Assignments</h2>
+        {/* Assignments */}
+        <section className="rounded-xl border bg-white p-6 shadow-sm">
+          <h2 className="mb-4 text-2xl font-bold">
+            Assignments ({assignments.length})
+          </h2>
 
           {assignments.length === 0 ? (
-            <p>No assignments available.</p>
+            <p className="text-slate-500">
+              No assignments available.
+            </p>
           ) : (
             <div className="space-y-3">
               {assignments.map((assignment) => (
@@ -232,13 +337,17 @@ async function handleEnrollment() {
                   <p className="font-semibold">
                     {assignment.assignment_title}
                   </p>
-                  <p className="text-sm text-slate-500">
+
+                  <p className="mt-2 text-sm text-slate-500">
                     Deadline:{" "}
                     {assignment.deadline
-                      ? new Date(assignment.deadline).toLocaleDateString()
+                      ? new Date(
+                          assignment.deadline
+                        ).toLocaleDateString()
                       : "Not specified"}
                   </p>
-                  <p className="text-sm">
+
+                  <p className="mt-1 text-sm">
                     Maximum Marks: {assignment.marks}
                   </p>
                 </div>
@@ -247,11 +356,16 @@ async function handleEnrollment() {
           )}
         </section>
 
-        <section className="rounded-xl border bg-white p-6">
-          <h2 className="mb-4 text-2xl font-bold">Quizzes</h2>
+        {/* Quizzes */}
+        <section className="rounded-xl border bg-white p-6 shadow-sm">
+          <h2 className="mb-4 text-2xl font-bold">
+            Quizzes ({quizzes.length})
+          </h2>
 
           {quizzes.length === 0 ? (
-            <p>No quizzes available.</p>
+            <p className="text-slate-500">
+              No quizzes available.
+            </p>
           ) : (
             <div className="space-y-3">
               {quizzes.map((quiz) => (
@@ -262,10 +376,12 @@ async function handleEnrollment() {
                   <p className="font-semibold">
                     Quiz {quiz.quiz_id}
                   </p>
-                  <p className="text-sm text-slate-500">
+
+                  <p className="mt-2 text-sm text-slate-500">
                     Duration: {quiz.duration}
                   </p>
-                  <p className="text-sm">
+
+                  <p className="mt-1 text-sm">
                     Total Marks: {quiz.total_marks}
                   </p>
                 </div>
@@ -273,6 +389,7 @@ async function handleEnrollment() {
             </div>
           )}
         </section>
+
       </div>
     </main>
   );
