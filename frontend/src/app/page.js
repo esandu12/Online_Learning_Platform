@@ -48,19 +48,6 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-[#f5f7fb] text-slate-900">
-      <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-7xl flex-col gap-4 px-5 py-5 sm:px-8 md:flex-row md:items-center md:justify-between">
-          <Link href="/" className="text-xl font-bold tracking-tight text-slate-950">LearnSpace</Link>
-          <nav aria-label="Main navigation" className="flex flex-wrap gap-x-6 gap-y-2 text-sm font-medium text-slate-600">
-            <Link href="/" aria-current="page" className="text-indigo-700">Courses</Link>
-            <Link href="/my-enrollments" className="hover:text-indigo-700">My Enrollments</Link>
-            <Link href="/admin/courses" className="hover:text-indigo-700">Manage Courses</Link>
-            <Link href="/login" className="hover:text-indigo-700">Sign in</Link>
-            <Link href="/signup" className="hover:text-indigo-700">Sign up</Link>
-          </nav>
-        </div>
-      </header>
-
       <section className="bg-gradient-to-br from-indigo-950 via-indigo-900 to-violet-800 text-white">
         <div className="mx-auto max-w-7xl px-5 py-12 sm:px-8 sm:py-16">
           <p className="text-sm font-semibold uppercase tracking-[0.18em] text-indigo-200">Learn at your pace</p>
