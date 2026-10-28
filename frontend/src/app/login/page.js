@@ -22,7 +22,12 @@ export default function LoginPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
-      router.push(user.role === "admin" ? "/dashboard/admin" : user.role === "instructor" ? "/dashboard/instructor" : "/dashboard/student");
+      const dashboardPaths = {
+        student: "/student/dashboard",
+        instructor: "/instructor/dashboard",
+        admin: "/admin/dashboard",
+      };
+      router.replace(dashboardPaths[user.role] || "/");
     } catch (err) { setError(err.message); } finally { setBusy(false); }
   }
 
