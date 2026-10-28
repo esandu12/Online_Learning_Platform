@@ -1,99 +1,148 @@
 
 const express = require("express");
-const router = express.Router();
 const db = require("../config/db");
-const { validateEnrollment } = require("../validation/enrollmentValidation");
-const { authenticate, requireRole, canViewStudentEnrollments } = require("../auth/middleware");
 
-// Admin-only student directory.
-router.get("/students", authenticate, requireRole("admin"), async (req, res) => {
+const {
+  authenticate,
+  requireRole,
+  requireSameOrigin,
+} = require("../auth/middleware");
+
+const router = express.Router();
+
+// All enrollment endpoints require student login.
+router.use(authenticate, requireRole("student"));
+
+// GET /api/enrollments/me
+// Show courses belonging to the logged-in student.
+router.get("/me", async (req, res, next) => {
   try {
-    const [students] = await db.execute(
-      `SELECT student_id, first_name, last_name
-       FROM student
-       ORDER BY first_name, last_name`
+    const studentId = req.user.student_id;
+
+    if (!studentId) {
+      return res.status(403).json({
+        error: "Student profile not found for this account",
+      });
+    }
+
+    const [rows] = await db.execute(
+      `
+      SELECT
+        e.student_id,
+        e.course_id,
+        c.course_name,
+        c.level,
+        c.duration,
+        c.price,
+        i.instructor_name
+      FROM enrollment e
+      JOIN course c ON c.course_id = e.course_id
+      LEFT JOIN instructor i
+        ON i.instructor_id = c.instructor_id
+      WHERE e.student_id = ?
+      ORDER BY c.course_name
+      `,
+      [studentId]
     );
 
-    res.json(students);
+    return res.json(rows);
   } catch (error) {
-    console.error("Student list error:", error.message);
-    res.status(500).json({
-      error: "Failed to retrieve students"
-    });
+    return next(error);
   }
 });
 
-// GET - Courses enrolled by one student
-router.get("/students/:studentId", authenticate, async (req, res) => {
-  if (!canViewStudentEnrollments(req.user, req.params.studentId)) {
-    return res.status(403).json({ error: "You can only view your own enrollments" });
-  }
+// POST /api/enrollments
+// Enroll the currently logged-in student.
+router.post("/", requireSameOrigin, async (req, res, next) => {
   try {
-    const [enrollments] = await db.execute(
-      `SELECT
-         e.student_id,
-         e.course_id,
-         e.enrollment_date,
-         c.course_name,
-         c.level,
-         c.duration,
-         c.price
-       FROM enrollment e
-       JOIN course c
-         ON e.course_id = c.course_id
-       WHERE e.student_id = ?
-       ORDER BY e.enrollment_date DESC`,
-      [req.params.studentId]
+    const studentId = req.user.student_id;
+    const courseId = req.body?.course_id;
+
+    if (!studentId) {
+      return res.status(403).json({
+        error: "Only student accounts can enroll",
+      });
+    }
+
+    if (
+      typeof courseId !== "string" ||
+      !/^[A-Za-z0-9_-]{1,10}$/.test(courseId)
+    ) {
+      return res.status(400).json({
+        error: "Valid course ID is required",
+      });
+    }
+
+    const [courses] = await db.execute(
+      "SELECT course_id FROM course WHERE course_id = ?",
+      [courseId]
     );
 
-    res.json(enrollments);
-  } catch (error) {
-    console.error("Enrollment list error:", error.message);
-    res.status(500).json({
-      error: "Failed to retrieve enrollments"
-    });
-  }
-});
+    if (courses.length === 0) {
+      return res.status(404).json({
+        error: "Course not found",
+      });
+    }
 
-// POST - Enroll student into course
-router.post("/", authenticate, requireRole("student", "admin"), async (req, res) => {
-  const body = req.user.role === "student"
-    ? { ...req.body, student_id: req.user.student_id }
-    : req.body;
-  const validation = validateEnrollment(body);
-  if (validation.error) return res.status(400).json({ error: validation.error });
-  const { student_id, course_id } = validation.value;
-
-  try {
-    await db.execute(
-      `INSERT INTO enrollment
-       (student_id, course_id, enrollment_date)
-       VALUES (?, ?, CURDATE())`,
-      [student_id, course_id]
+    const [result] = await db.execute(
+      `
+      INSERT INTO enrollment
+        (student_id, course_id, enrollment_date)
+      VALUES (?, ?, CURDATE())
+      `,
+      [studentId, courseId]
     );
 
-    res.status(201).json({
-      message: "Student enrolled successfully"
+    return res.status(201).json({
+      message: "Successfully enrolled in the course!",
+      course_id: courseId,
+      student_id: studentId,
     });
   } catch (error) {
     if (error.code === "ER_DUP_ENTRY") {
       return res.status(409).json({
-        error: "Student is already enrolled in this course"
+        error: "You are already enrolled in this course",
       });
     }
 
-    if (error.code === "ER_NO_REFERENCED_ROW_2") {
-      return res.status(400).json({
-        error: "Student ID or Course ID does not exist"
-      });
-    }
-
-    console.error("Enrollment error:", error.message);
-
-    res.status(500).json({
-      error: "Failed to enroll student"
-    });
+    return next(error);
   }
 });
+
+
+router.delete(
+  "/:courseId",
+  requireSameOrigin,
+  async (req, res, next) => {
+    try {
+      const studentId = req.user.student_id;
+      const courseId = req.params.courseId;
+
+      if (!studentId) {
+        return res.status(403).json({
+          error: "Student account required",
+        });
+      }
+
+      const [result] = await db.execute(
+        `DELETE FROM enrollment
+         WHERE student_id = ? AND course_id = ?`,
+        [studentId, courseId]
+      );
+
+      if (result.affectedRows === 0) {
+        return res.status(404).json({
+          error: "You are not enrolled in this course",
+        });
+      }
+
+      return res.json({
+        message: "Successfully unenrolled",
+      });
+    } catch (error) {
+      return next(error);
+    }
+  }
+);
 
 module.exports = router;

@@ -1,53 +1,137 @@
+
 "use client";
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import AuthGate from "../../components/AuthGate";
-import AccountMenu from "../../components/AccountMenu";
 import { apiRequest } from "../../lib/api";
 
-function EnrollmentsContent() {
-  const [enrollments, setEnrollments] = useState([]);
+export default function MyEnrollmentsPage() {
   const [courses, setCourses] = useState([]);
-  const [courseId, setCourseId] = useState("");
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [message, setMessage] = useState("");
+  const [unauthorized, setUnauthorized] = useState(false);
 
-  async function load() {
-    const [{ user }, courseRows] = await Promise.all([apiRequest("/auth/me"), apiRequest("/courses")]);
-    const rows = await apiRequest(`/enrollments/students/${encodeURIComponent(user.profileId)}`);
-    setEnrollments(rows);
-    setCourses(courseRows);
-  }
-  useEffect(() => {
-    Promise.all([apiRequest("/auth/me"), apiRequest("/courses")])
-      .then(async ([{ user }, courseRows]) => {
-        const rows = await apiRequest(`/enrollments/students/${encodeURIComponent(user.profileId)}`);
-        setEnrollments(rows);
-        setCourses(courseRows);
-      })
-      .catch((err) => setError(err.message))
-      .finally(() => setLoading(false));
-  }, []);
 
-  async function enroll(event) {
-    event.preventDefault(); setError(""); setMessage(""); setSaving(true);
-    try {
-      await apiRequest("/enrollments", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ course_id: courseId }) });
-      await load(); setMessage("You are enrolled in this course."); setCourseId("");
-    } catch (err) { setError(err.message); } finally { setSaving(false); }
+async function unenroll(courseId) {
+  if (!window.confirm("Are you sure you want to unenroll?")) {
+    return;
   }
 
-  return <main className="min-h-screen bg-slate-50 p-6 text-slate-900"><div className="mx-auto max-w-5xl">
-    <header className="flex items-center justify-between"><div><Link href="/dashboard/student" className="text-sm text-indigo-700">← Student dashboard</Link><h1 className="mt-2 text-3xl font-bold">My enrollments</h1><p className="mt-1 text-slate-600">Only your courses are shown here.</p></div><AccountMenu /></header>
-    <section className="mt-7 rounded-2xl border bg-white p-6 shadow-sm"><h2 className="text-xl font-semibold">Enroll in a course</h2><form onSubmit={enroll} className="mt-4 flex flex-col gap-3 sm:flex-row"><select required value={courseId} onChange={(e) => setCourseId(e.target.value)} className="min-w-0 flex-1 rounded-lg border bg-white p-3"><option value="">Choose a course</option>{courses.filter((course) => !enrollments.some((item) => item.course_id === course.course_id)).map((course) => <option key={course.course_id} value={course.course_id}>{course.course_name}</option>)}</select><button disabled={saving || loading} className="rounded-lg bg-indigo-700 px-5 py-3 font-semibold text-white disabled:opacity-60">{saving ? "Enrolling…" : "Enroll"}</button></form></section>
-    {error && <p role="alert" className="mt-5 rounded-lg bg-red-50 p-3 text-red-800">{error}</p>}{message && <p role="status" className="mt-5 rounded-lg bg-green-50 p-3 text-green-800">{message}</p>}
-    {loading && <p className="mt-6" role="status">Loading your enrollments…</p>}
-    {!loading && enrollments.length === 0 && <p className="mt-6 rounded-xl border border-dashed bg-white p-8 text-center text-slate-600">You haven’t enrolled in a course yet.</p>}
-    {!loading && enrollments.length > 0 && <section className="mt-7 grid gap-5 md:grid-cols-2">{enrollments.map((item) => <article key={item.course_id} className="rounded-xl border bg-white p-6 shadow-sm"><h2 className="text-xl font-bold">{item.course_name}</h2><p className="mt-2 text-slate-600">{item.level || "All levels"} · {item.duration || "Flexible duration"}</p><p className="mt-2 text-sm text-slate-500">Enrolled: {item.enrollment_date ? String(item.enrollment_date).slice(0, 10) : "Not specified"}</p><Link href={`/courses/${encodeURIComponent(item.course_id)}`} className="mt-5 inline-block rounded-lg bg-indigo-700 px-4 py-2.5 text-white">View course</Link></article>)}</section>}
-  </div></main>;
+  try {
+    setError("");
+
+    await apiRequest(
+      `/enrollments/${encodeURIComponent(courseId)}`,
+      { method: "DELETE" }
+    );
+
+    setCourses((previous) =>
+      previous.filter((course) => course.course_id !== courseId)
+    );
+  } catch (err) {
+    setError(err.message || "Unable to unenroll");
+  }
 }
 
-export default function MyEnrollmentsPage() { return <AuthGate roles={["student"]}><EnrollmentsContent /></AuthGate>; }
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadEnrollments() {
+      try {
+        const session = await apiRequest("/auth/me");
+
+        if (session.user?.role !== "student") {
+          if (active) setUnauthorized(true);
+          return;
+        }
+
+        const results = await apiRequest("/enrollments/me");
+
+        if (active) setCourses(results);
+      } catch (err) {
+        if (active) {
+          setError(err.message || "Failed to load enrollments");
+        }
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+
+    loadEnrollments();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  return (
+    <main className="min-h-screen bg-slate-50 p-6 text-slate-900">
+      <div className="mx-auto max-w-5xl">
+        <Link href="/" className="text-blue-600">
+          ← Course Catalog
+        </Link>
+
+        <h1 className="mt-8 text-3xl font-bold">
+          My Enrollments
+        </h1>
+
+        {loading ? (
+          <p className="mt-6">Loading enrollments...</p>
+        ) : unauthorized ? (
+          <p className="mt-6">
+            Please sign in as a student to view enrollments.
+          </p>
+        ) : error ? (
+          <div role="alert" className="mt-6 text-red-600">
+            {error}
+            <div className="mt-3">
+              <Link href="/login" className="text-blue-600">
+                Sign in
+              </Link>
+            </div>
+          </div>
+        ) : courses.length === 0 ? (
+          <p className="mt-6">
+            You have not enrolled in any courses yet.
+          </p>
+        ) : (
+          <div className="mt-6 grid gap-4 sm:grid-cols-2">
+            {courses.map((course) => (
+              
+              <div
+                key={course.course_id}
+                className="rounded-xl border bg-white p-6"
+              >
+                <h2 className="text-xl font-bold">
+                  {course.course_name}
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => unenroll(course.course_id)}
+                  className="mt-3 rounded-lg border border-red-300 px-4 py-2 text-red-600 hover:bg-red-50"
+                >
+                  Unenroll
+                </button>
+                <p className="mt-2 text-slate-600">
+                  Instructor: {course.instructor_name}
+                </p>
+
+                <p className="mt-1 text-slate-600">
+                  Level: {course.level}
+                </p>
+
+                <Link
+                  href={`/courses/${encodeURIComponent(course.course_id)}`}
+                  className="mt-4 inline-block text-blue-600"
+                >
+                  View Course
+                </Link>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </main>
+  );
+}

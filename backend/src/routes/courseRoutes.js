@@ -3,9 +3,8 @@ const router = express.Router();
 const db = require("../config/db");
 const { validateCourse } = require("../validation/courseValidation");
 const { authenticate, requireRole } = require("../auth/middleware");
-
 // CREATE a course
-router.post("/", authenticate, requireRole("admin"), async (req, res) => {
+router.post("/", authenticate, requireRole("admin"), async (req, res, next) => {
   try {
     const validation = validateCourse(req.body, { creating: true });
     if (validation.error) return res.status(400).json({ error: validation.error });

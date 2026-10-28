@@ -7,38 +7,77 @@ import { apiRequest } from "../../../lib/api";
 
 export default function CourseDetailsClient({ courseId }) {
   const [data, setData] = useState(null);
+  const [user, setUser] = useState(null);
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const [students, setStudents] = useState([]);
-  const [selectedStudent, setSelectedStudent] = useState("");
+  const [enrolling, setEnrolling] = useState(false);
   const [enrollmentMessage, setEnrollmentMessage] = useState("");
   const [enrollmentError, setEnrollmentError] = useState("");
-  const [enrolling, setEnrolling] = useState(false);
+  const [alreadyEnrolled, setAlreadyEnrolled] = useState(false);
 
-  // Load course details
   useEffect(() => {
-    if (!courseId) return;
-
     const controller = new AbortController();
 
-    async function loadDetails() {
+    async function loadPage() {
       setLoading(true);
       setError("");
-      setData(null);
+      setEnrollmentError("");
+      setEnrollmentMessage("");
 
       try {
-        const result = await apiRequest(
+        const details = await apiRequest(
           `/courses/${encodeURIComponent(courseId)}/details`,
           { signal: controller.signal }
         );
 
-        if (!controller.signal.aborted) {
-          setData(result);
+        if (controller.signal.aborted) return;
+
+        setData(details);
+
+        try {
+          const session = await apiRequest("/auth/me", {
+            signal: controller.signal,
+          });
+
+          if (controller.signal.aborted) return;
+
+          const currentUser = session.user;
+          setUser(currentUser);
+
+          if (currentUser?.role === "student") {
+            try {
+              const enrollments = await apiRequest(
+                "/enrollments/me",
+                { signal: controller.signal }
+              );
+
+              if (!controller.signal.aborted) {
+                setAlreadyEnrolled(
+                  enrollments.some(
+                    (item) => item.course_id === courseId
+                  )
+                );
+              }
+            } catch (err) {
+              if (!controller.signal.aborted) {
+                setEnrollmentError(
+                  err.message || "Could not check enrollment"
+                );
+              }
+            }
+          }
+        } catch (err) {
+          if (!controller.signal.aborted) {
+            setUser(null);
+          }
         }
       } catch (err) {
         if (!controller.signal.aborted) {
-          setError(err.message || "Unable to load course details");
+          setError(
+            err.message || "Unable to load course details"
+          );
         }
       } finally {
         if (!controller.signal.aborted) {
@@ -47,45 +86,22 @@ export default function CourseDetailsClient({ courseId }) {
       }
     }
 
-    loadDetails();
+    if (courseId) {
+      loadPage();
+    }
 
     return () => controller.abort();
   }, [courseId]);
 
-  // Load students for enrollment
-  useEffect(() => {
-    const controller = new AbortController();
-
-    async function loadStudents() {
-      try {
-        const result = await apiRequest(
-          "/enrollments/students",
-          { signal: controller.signal }
-        );
-
-        if (!controller.signal.aborted) {
-          setStudents(result);
-        }
-      } catch (err) {
-        if (!controller.signal.aborted) {
-          setEnrollmentError(
-            err.message || "Unable to load students"
-          );
-        }
-      }
-    }
-
-    loadStudents();
-
-    return () => controller.abort();
-  }, []);
-
-  // Enroll selected student
   async function handleEnrollment() {
-    if (!selectedStudent || !courseId || enrolling) {
-      setEnrollmentError("Please select a student.");
+    if (!user || user.role !== "student") {
+      setEnrollmentError(
+        "Please sign in with a student account."
+      );
       return;
     }
+
+    if (alreadyEnrolled || enrolling) return;
 
     setEnrolling(true);
     setEnrollmentMessage("");
@@ -94,22 +110,24 @@ export default function CourseDetailsClient({ courseId }) {
     try {
       const result = await apiRequest("/enrollments", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
         body: JSON.stringify({
-          student_id: selectedStudent,
           course_id: courseId,
         }),
       });
 
+      setAlreadyEnrolled(true);
       setEnrollmentMessage(
-        result.message || "Student enrolled successfully!"
+        result.message || "Successfully enrolled!"
       );
     } catch (err) {
-      setEnrollmentError(
-        err.message || "Failed to enroll student"
-      );
+      const message =
+        err.message || "Could not enroll in this course";
+
+      setEnrollmentError(message);
+
+      if (/already enrolled/i.test(message)) {
+        setAlreadyEnrolled(true);
+      }
     } finally {
       setEnrolling(false);
     }
@@ -117,7 +135,7 @@ export default function CourseDetailsClient({ courseId }) {
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-slate-50 p-10 text-slate-900">
+      <main className="min-h-screen bg-slate-50 p-10">
         Loading course details...
       </main>
     );
@@ -126,18 +144,16 @@ export default function CourseDetailsClient({ courseId }) {
   if (error) {
     return (
       <main className="min-h-screen bg-slate-50 p-10">
-        <p role="alert" className="text-red-600">
-          {error}
-        </p>
+        <p className="text-red-600">{error}</p>
 
-        <Link href="/" className="mt-5 inline-block text-blue-600">
-          ← Back to Courses
+        <Link href="/" className="text-blue-600">
+          Back to courses
         </Link>
       </main>
     );
   }
 
-  if (!data || !data.course) {
+  if (!data?.course) {
     return (
       <main className="p-10">
         Course not found.
@@ -154,20 +170,15 @@ export default function CourseDetailsClient({ courseId }) {
 
   return (
     <main className="min-h-screen bg-slate-50 text-slate-900">
-
-      {/* Navigation */}
       <header className="border-b bg-white px-6 py-5">
-        <div className="mx-auto flex max-w-5xl flex-wrap justify-between gap-4">
-          <Link
-            href="/"
-            className="font-medium text-blue-600 hover:underline"
-          >
+        <div className="mx-auto flex max-w-5xl justify-between gap-4">
+          <Link href="/" className="text-blue-600">
             ← All Courses
           </Link>
 
           <Link
             href="/my-enrollments"
-            className="font-medium text-blue-600 hover:underline"
+            className="text-blue-600"
           >
             My Enrollments
           </Link>
@@ -211,49 +222,54 @@ export default function CourseDetailsClient({ courseId }) {
           </div>
         </section>
 
-        {/* Student Enrollment */}
+        {/* Enrollment */}
         <section className="rounded-xl border bg-white p-6 shadow-sm">
           <h2 className="mb-4 text-2xl font-bold">
             Enroll in This Course
           </h2>
 
-          <p className="mb-5 text-sm text-slate-500">
-            Select an existing student and enroll in this course.
-          </p>
+          {!user ? (
+            <div>
+              <p className="mb-4 text-slate-600">
+                Sign in as a student to enroll.
+              </p>
 
-          <div className="flex flex-col gap-3 sm:flex-row">
-            <select
-              value={selectedStudent}
-              onChange={(e) => {
-                setSelectedStudent(e.target.value);
-                setEnrollmentMessage("");
-                setEnrollmentError("");
-              }}
-              aria-label="Select Student"
-              className="flex-1 rounded-lg border border-slate-300 bg-white p-3"
-            >
-              <option value="">Select Student</option>
+              <Link
+                href="/login"
+                className="inline-block rounded-lg bg-blue-600 px-6 py-3 font-medium text-white"
+              >
+                Sign in to Enroll
+              </Link>
+            </div>
+          ) : user.role !== "student" ? (
+            <p className="rounded-lg bg-amber-50 p-4 text-amber-800">
+              Enrollment is available for student accounts only.
+              You are signed in as {user.role}.
+            </p>
+          ) : (
+            <div>
+              <p className="mb-2 text-slate-600">
+                Signed in as:
+              </p>
 
-              {students.map((student) => (
-                <option
-                  key={student.student_id}
-                  value={student.student_id}
-                >
-                  {student.first_name} {student.last_name}
-                  {" "}({student.student_id})
-                </option>
-              ))}
-            </select>
+              <p className="mb-5 font-semibold">
+                {user.name || user.email}
+              </p>
 
-            <button
-              type="button"
-              onClick={handleEnrollment}
-              disabled={enrolling || !selectedStudent}
-              className="rounded-lg bg-blue-600 px-6 py-3 font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {enrolling ? "Enrolling..." : "Enroll Now"}
-            </button>
-          </div>
+              <button
+                type="button"
+                onClick={handleEnrollment}
+                disabled={enrolling || alreadyEnrolled}
+                className="rounded-lg bg-blue-600 px-6 py-3 font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-400"
+              >
+                {enrolling
+                  ? "Enrolling..."
+                  : alreadyEnrolled
+                    ? "Already Enrolled"
+                    : "Enroll Now"}
+              </button>
+            </div>
+          )}
 
           {enrollmentMessage && (
             <p
@@ -274,39 +290,35 @@ export default function CourseDetailsClient({ courseId }) {
           )}
         </section>
 
-        {/* Course Lessons */}
+        {/* Lessons */}
         <section className="rounded-xl border bg-white p-6 shadow-sm">
           <h2 className="mb-4 text-2xl font-bold">
             Course Lessons ({lessons.length})
           </h2>
 
           {lessons.length === 0 ? (
-            <p className="text-slate-500">
-              No lessons available yet.
-            </p>
+            <p>No lessons available yet.</p>
           ) : (
             <div className="space-y-3">
               {lessons.map((lesson, index) => (
                 <div
                   key={lesson.lesson_id}
-                  className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-4"
+                  className="rounded-lg border p-4"
                 >
-                  <div>
-                    <p className="font-semibold">
-                      {index + 1}. {lesson.lesson_title}
-                    </p>
+                  <p className="font-semibold">
+                    {index + 1}. {lesson.lesson_title}
+                  </p>
 
-                    <p className="mt-1 text-sm text-slate-500">
-                      {lesson.lesson_duration}
-                    </p>
-                  </div>
+                  <p className="text-sm text-slate-500">
+                    {lesson.lesson_duration}
+                  </p>
 
                   {lesson.lesson_url && (
                     <a
                       href={lesson.lesson_url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="rounded-lg bg-blue-50 px-4 py-2 font-medium text-blue-600 hover:bg-blue-100"
+                      className="mt-3 inline-block text-blue-600"
                     >
                       View Lesson
                     </a>
@@ -324,9 +336,7 @@ export default function CourseDetailsClient({ courseId }) {
           </h2>
 
           {assignments.length === 0 ? (
-            <p className="text-slate-500">
-              No assignments available.
-            </p>
+            <p>No assignments available.</p>
           ) : (
             <div className="space-y-3">
               {assignments.map((assignment) => (
@@ -363,9 +373,7 @@ export default function CourseDetailsClient({ courseId }) {
           </h2>
 
           {quizzes.length === 0 ? (
-            <p className="text-slate-500">
-              No quizzes available.
-            </p>
+            <p>No quizzes available.</p>
           ) : (
             <div className="space-y-3">
               {quizzes.map((quiz) => (
@@ -389,7 +397,6 @@ export default function CourseDetailsClient({ courseId }) {
             </div>
           )}
         </section>
-
       </div>
     </main>
   );

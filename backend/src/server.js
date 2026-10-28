@@ -7,6 +7,7 @@ const db = require("./config/db");
 const courseRoutes = require("./routes/courseRoutes");
 const enrollmentRoutes = require("./routes/enrollmentRoutes");
 const authRoutes = require("./routes/authRoutes");
+const instructorCourseRoutes = require("./routes/instructorCourseRoutes");
 
 const app = express();
 const PORT = process.env.PORT || 5001;
@@ -14,6 +15,7 @@ const PORT = process.env.PORT || 5001;
 // Middleware
 app.use(cors({ origin: process.env.FRONTEND_ORIGIN || "http://localhost:3000", credentials: true }));
 app.use(express.json({ limit: "100kb" }));
+app.use("/api/instructor/courses", instructorCourseRoutes);
 
 // Home route
 app.get("/", (req, res) => {

@@ -1,39 +1,80 @@
-require("dotenv").config();
+
+const readline = require("node:readline/promises");
+const { stdin, stdout } = require("node:process");
 const db = require("../config/db");
-const { normalizeEmail, validateEmail, validatePassword, hashPassword } = require("../auth/security");
+const {
+  hashPassword,
+  validatePassword,
+} = require("../auth/security");
+
+const ADMIN_EMAIL = "esanduliyana@gmail.com";
 
 async function main() {
-  const email = normalizeEmail(process.env.ADMIN_EMAIL);
-  const password = process.env.ADMIN_PASSWORD;
-  if (!validateEmail(email) || !validatePassword(password)) {
-    throw new Error("Set ADMIN_EMAIL and ADMIN_PASSWORD (at least 12 characters) in backend/.env, then retry.");
+  if (!stdin.isTTY) {
+    throw new Error("Run this script in an interactive terminal.");
   }
 
-  const passwordHash = await hashPassword(password);
-  const connection = await db.getConnection();
+  const rl = readline.createInterface({
+    input: stdin,
+    output: stdout,
+  });
+
   try {
-    await connection.beginTransaction();
-    const [rows] = await connection.execute(
-      "SELECT account_id FROM auth_user WHERE email=? AND role='admin' AND status='active' FOR UPDATE",
-      [email]
+    const confirmation = await rl.question(
+      `Reset password for ${ADMIN_EMAIL}? Type RESET: `
     );
-    if (!rows.length) {
-      throw new Error("No active administrator account exists for ADMIN_EMAIL.");
+
+    if (confirmation.trim() !== "RESET") {
+      console.log("Cancelled.");
+      return;
     }
-    const accountId = rows[0].account_id;
-    await connection.execute("UPDATE auth_user SET password_hash=? WHERE account_id=?", [passwordHash, accountId]);
-    await connection.execute("DELETE FROM auth_session WHERE account_id=?", [accountId]);
-    await connection.commit();
-    process.stdout.write("Administrator password updated and existing sessions revoked.\n");
-  } catch (error) {
-    await connection.rollback();
-    throw error;
+
+    const password = await rl.question(
+      "New admin password (minimum 12 characters): "
+    );
+
+    if (!validatePassword(password)) {
+      throw new Error(
+        "Password must contain 12–128 characters."
+      );
+    }
+
+    const passwordHash = await hashPassword(password);
+
+    const [result] = await db.execute(
+      `UPDATE auth_user
+       SET password_hash = ?
+       WHERE email = ?
+         AND role = 'admin'
+         AND status = 'active'`,
+      [passwordHash, ADMIN_EMAIL]
+    );
+
+    if (result.affectedRows !== 1) {
+      throw new Error("Active admin account not found.");
+    }
+
+    await db.execute(
+      `DELETE FROM auth_session
+       WHERE account_id = (
+         SELECT account_id
+         FROM auth_user
+         WHERE email = ? AND role = 'admin'
+       )`,
+      [ADMIN_EMAIL]
+    );
+
+    console.log("Admin password reset successfully.");
   } finally {
-    connection.release();
+    rl.close();
   }
 }
 
-main().catch((error) => {
-  process.stderr.write(`${error.message}\n`);
-  process.exitCode = 1;
-}).finally(() => db.end());
+main()
+  .catch((error) => {
+    console.error("Password reset failed:", error.message);
+    process.exitCode = 1;
+  })
+  .finally(async () => {
+    await db.end();
+  });
