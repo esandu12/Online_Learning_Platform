@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { apiRequest } from "../lib/api";
 
 const dashboardPaths = {
@@ -17,6 +17,7 @@ function initials(value) {
 
 export default function RoleNavbar() {
   const router = useRouter();
+  const pathname = usePathname();
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -31,7 +32,7 @@ export default function RoleNavbar() {
       if (active) setLoading(false);
     });
     return () => { active = false; };
-  }, []);
+  }, [pathname]);
 
   async function signOut() {
     try {
