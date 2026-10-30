@@ -189,16 +189,17 @@ function CourseManagementContent() {
     "w-full rounded-lg border border-slate-300 bg-white p-3 text-slate-900";
 
   return (
-    <main className="min-h-screen bg-slate-50 p-6 text-slate-900">
+    <main className="app-page">
       <div className="mx-auto max-w-6xl">
-        <header className="mb-8">
-          <Link href="/" className="text-blue-600 hover:underline">
-            ← Course Catalog
+        <header className="mb-7 border-b border-slate-200/80 pb-6">
+          <Link href="/admin/dashboard" className="text-sm font-semibold text-indigo-700 no-underline hover:text-indigo-900">
+            ← Administrator dashboard
           </Link>
-          <h1 className="mt-3 text-3xl font-bold">
-            Course Management
+          <p className="mt-5 text-xs font-bold uppercase tracking-[0.16em] text-indigo-600">Platform workspace</p>
+          <h1 className="page-title mt-2">
+            Course management
           </h1>
-          <p className="text-slate-500">
+          <p className="subtle-copy mt-2">
             Create, view, update and delete courses.
           </p>
         </header>
@@ -215,8 +216,8 @@ function CourseManagementContent() {
           </div>
         )}
 
-        <section className="mb-10 rounded-xl border bg-white p-6 shadow-sm">
-          <h2 className="mb-5 text-xl font-bold">
+        <section className="panel mb-7">
+          <h2 className="section-title mb-5">
             {editing ? "Edit Course" : "Add New Course"}
           </h2>
 
@@ -300,7 +301,7 @@ function CourseManagementContent() {
 
             <div className="flex items-end gap-3">
               <button type="submit" disabled={saving}
-                className="rounded-lg bg-blue-600 px-6 py-3 font-medium text-white disabled:opacity-50">
+                className="rounded-xl bg-indigo-700 px-6 py-3 font-semibold text-white shadow-sm transition hover:bg-indigo-800 disabled:opacity-50">
                 {saving ? "Saving..." : editing ? "Update Course" : "Add Course"}
               </button>
               {editing && (
@@ -313,9 +314,9 @@ function CourseManagementContent() {
           </form>
         </section>
 
-        <section className="rounded-xl border bg-white p-6 shadow-sm">
+        <section className="panel">
           <div className="mb-5 flex flex-wrap items-center justify-between gap-4">
-            <h2 className="text-xl font-bold">
+            <h2 className="section-title">
               Courses ({filtered.length})
             </h2>
 

@@ -31,15 +31,16 @@ export default function LoginPage() {
     } catch (err) { setError(err.message); } finally { setBusy(false); }
   }
 
-  return <main className="min-h-screen bg-slate-50 px-5 py-12 text-slate-900"><div className="mx-auto max-w-md rounded-2xl border bg-white p-8 shadow-sm">
-    <Link href="/" className="text-sm text-indigo-700">← Course catalog</Link>
-    <h1 className="mt-5 text-3xl font-bold">Sign in</h1>
-    <p className="mt-2 text-slate-600">Use your student, instructor, or administrator account.</p>
+  return <main className="app-page flex items-center justify-center"><div className="panel w-full max-w-md p-7 sm:p-9">
+    <Link href="/" className="text-sm font-semibold text-indigo-700 no-underline hover:text-indigo-900">← Course catalog</Link>
+    <p className="mt-7 text-xs font-bold uppercase tracking-[0.16em] text-indigo-600">Welcome back</p>
+    <h1 className="page-title mt-2">Sign in</h1>
+    <p className="subtle-copy mt-2 leading-6">Use your student, instructor, or administrator account.</p>
     {error && <p className="mt-5 rounded-lg bg-red-50 p-3 text-red-800" role="alert">{error}</p>}
     <form onSubmit={submit} className="mt-6 space-y-4">
       <label className="block text-sm font-medium">Email<input type="email" autoComplete="username" required maxLength={100} value={email} onChange={(e) => setEmail(e.target.value)} className="mt-1 w-full rounded-lg border p-3" /></label>
       <label className="block text-sm font-medium">Password<input type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} className="mt-1 w-full rounded-lg border p-3" /></label>
-      <button disabled={busy} className="w-full rounded-lg bg-indigo-700 p-3 font-semibold text-white disabled:opacity-60">{busy ? "Signing in…" : "Sign in"}</button>
+      <button disabled={busy} className="w-full rounded-xl bg-indigo-700 p-3.5 font-semibold text-white shadow-sm transition hover:bg-indigo-800 disabled:opacity-60">{busy ? "Signing in…" : "Sign in"}</button>
     </form>
     <p className="mt-5 text-sm text-slate-600">New student or instructor? <Link href="/signup" className="font-semibold text-indigo-700">Create an account</Link></p>
   </div></main>;

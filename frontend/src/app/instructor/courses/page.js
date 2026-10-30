@@ -116,18 +116,19 @@ export default function InstructorCoursesPage() {
     }
   }
 
-  if (loading) return <main className="p-8">Loading courses...</main>;
+  if (loading) return <main className="app-page" role="status"><div className="app-container panel">Loading your courses…</div></main>;
 
   return (
-    <main className="mx-auto max-w-6xl space-y-8 px-5 py-10 text-slate-900">
-      <Link href="/instructor/dashboard" className="text-indigo-600">
-        ← Instructor Dashboard
+    <main className="app-page">
+      <div className="app-container space-y-6">
+      <Link href="/instructor/dashboard" className="text-sm font-semibold text-indigo-700 no-underline hover:text-indigo-900">
+        ← Instructor dashboard
       </Link>
 
-      <h1 className="text-3xl font-bold">Manage My Courses</h1>
+      <div><p className="text-xs font-bold uppercase tracking-[0.16em] text-indigo-600">Teaching workspace</p><h1 className="page-title mt-2">Manage my courses</h1></div>
 
-      <form onSubmit={saveCourse} className="space-y-4 rounded-xl border bg-white p-6">
-        <h2 className="text-xl font-semibold">
+      <form onSubmit={saveCourse} className="panel space-y-4">
+        <h2 className="section-title">
           {editing ? "Update Course" : "Add New Course"}
         </h2>
 
@@ -217,7 +218,7 @@ export default function InstructorCoursesPage() {
           <button
             type="submit"
             disabled={saving}
-            className="rounded-lg bg-indigo-600 px-5 py-3 text-white disabled:opacity-50"
+            className="rounded-xl bg-indigo-700 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-800 disabled:opacity-50"
           >
             {saving ? "Saving..." : editing ? "Update Course" : "Add Course"}
           </button>
@@ -230,17 +231,17 @@ export default function InstructorCoursesPage() {
         </div>
       </form>
 
-      {error && <p role="alert" className="rounded-lg bg-red-50 p-4 text-red-700">{error}</p>}
-      {message && <p role="status" className="rounded-lg bg-green-50 p-4 text-green-700">{message}</p>}
+      {error && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-red-800">{error}</p>}
+      {message && <p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-800">{message}</p>}
 
       <section>
-        <h2 className="mb-4 text-2xl font-bold">
+        <h2 className="section-title mb-4">
           My Courses ({courses.length})
         </h2>
 
         <div className="grid gap-4 md:grid-cols-2">
           {courses.map((course) => (
-            <article key={course.course_id} className="rounded-xl border bg-white p-5">
+            <article key={course.course_id} className="panel">
               <h3 className="text-lg font-semibold">{course.course_name}</h3>
               <p className="mt-2 text-slate-500">
                 {course.level} · {course.duration}
@@ -249,14 +250,14 @@ export default function InstructorCoursesPage() {
               <div className="mt-4 flex gap-4">
                 <button
                   onClick={() => startEdit(course)}
-                  className="text-indigo-600"
+                  className="font-semibold text-indigo-700 hover:text-indigo-900"
                 >
                   Edit Course
                 </button>
 
                 <Link
                   href={`/courses/${encodeURIComponent(course.course_id)}`}
-                  className="text-indigo-600"
+                  className="font-semibold text-indigo-700 no-underline hover:text-indigo-900"
                 >
                   View Course
                 </Link>
@@ -265,6 +266,7 @@ export default function InstructorCoursesPage() {
           ))}
         </div>
       </section>
+      </div>
     </main>
   );
 }

@@ -39,25 +39,26 @@ export default function AdminDashboard() {
     return () => { active = false; };
   }, []);
 
-  if (loading) return <main className="p-8">Loading dashboard...</main>;
-  if (error) return <main className="p-8 text-red-600">{error}</main>;
+  if (loading) return <main className="app-page" role="status"><div className="app-container panel">Loading your dashboard…</div></main>;
+  if (error) return <main className="app-page"><div className="app-container rounded-xl border border-red-200 bg-red-50 p-4 text-red-800" role="alert">{error}</div></main>;
 
   return (
-    <main className="mx-auto max-w-6xl space-y-8 px-5 py-10 text-slate-900">
-      <section className="rounded-2xl bg-slate-900 p-8 text-white">
-        <p className="text-indigo-300">Administrator Dashboard</p>
-        <h1 className="mt-2 text-3xl font-bold">
+    <main className="app-page">
+      <div className="app-container space-y-6">
+      <section className="overflow-hidden rounded-3xl bg-gradient-to-br from-indigo-950 via-indigo-900 to-violet-800 p-7 text-white shadow-lg shadow-indigo-950/10 sm:p-9">
+        <p className="text-xs font-bold uppercase tracking-[0.16em] text-indigo-200">Platform workspace</p>
+        <h1 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">
           Welcome, {user.name || user.email}
         </h1>
         <p className="mt-2">Role: Admin</p>
       </section>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <div className="rounded-xl border bg-white p-6">
+        <div className="panel">
           <p className="text-slate-500">Total Courses</p>
           <p className="mt-2 text-4xl font-bold">{courseCount}</p>
         </div>
-        <div className="rounded-xl border bg-white p-6">
+        <div className="panel">
           <p className="text-slate-500">Administrator Email</p>
           <p className="mt-2 font-semibold">{user.email}</p>
         </div>
@@ -66,17 +67,18 @@ export default function AdminDashboard() {
       <div className="flex flex-wrap gap-3">
         <Link
           href="/admin/courses"
-          className="rounded-lg bg-indigo-600 px-5 py-3 text-white"
+          className="rounded-xl bg-indigo-700 px-5 py-3 font-semibold text-white no-underline shadow-sm transition hover:bg-indigo-800"
         >
           Manage All Courses
         </Link>
 
         <Link
           href="/"
-          className="rounded-lg border bg-white px-5 py-3"
+          className="rounded-xl border border-slate-200 bg-white px-5 py-3 font-semibold text-slate-700 no-underline transition hover:bg-indigo-50/50"
         >
           View Catalog
         </Link>
+      </div>
       </div>
     </main>
   );

@@ -25,7 +25,7 @@ export default function AuthGate({ roles, children }) {
     return () => { active = false; };
   }, [roles, router]);
 
-  if (state === "checking") return <main className="mx-auto max-w-3xl p-10 text-slate-600" role="status">Checking your session…</main>;
-  if (state === "forbidden") return <main className="mx-auto max-w-3xl p-10"><p role="alert">This page is only available to the required account role.</p></main>;
+  if (state === "checking") return <main className="app-page" role="status"><div className="app-container panel">Checking your session…</div></main>;
+  if (state === "forbidden") return <main className="app-page"><div className="app-container rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-900"><p role="alert">This page is only available to the required account role.</p></div></main>;
   return children;
 }

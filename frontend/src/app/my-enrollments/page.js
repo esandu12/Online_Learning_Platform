@@ -66,33 +66,34 @@ async function unenroll(courseId) {
   }, []);
 
   return (
-    <main className="min-h-screen bg-slate-50 p-6 text-slate-900">
-      <div className="mx-auto max-w-5xl">
-        <Link href="/" className="text-blue-600">
-          ← Course Catalog
+    <main className="app-page">
+      <div className="app-container">
+        <Link href="/" className="text-sm font-semibold text-indigo-700 no-underline hover:text-indigo-900">
+          ← Course catalog
         </Link>
 
-        <h1 className="mt-8 text-3xl font-bold">
-          My Enrollments
+        <p className="mt-5 text-xs font-bold uppercase tracking-[0.16em] text-indigo-600">Your learning</p>
+        <h1 className="page-title mt-2">
+          My enrollments
         </h1>
 
         {loading ? (
-          <p className="mt-6">Loading enrollments...</p>
+          <p className="panel mt-6" role="status">Loading your enrollments…</p>
         ) : unauthorized ? (
-          <p className="mt-6">
+          <p className="panel mt-6">
             Please sign in as a student to view enrollments.
           </p>
         ) : error ? (
-          <div role="alert" className="mt-6 text-red-600">
+          <div role="alert" className="mt-6 rounded-xl border border-red-200 bg-red-50 p-4 text-red-800">
             {error}
             <div className="mt-3">
-              <Link href="/login" className="text-blue-600">
+            <Link href="/login" className="font-semibold text-indigo-700">
                 Sign in
               </Link>
             </div>
           </div>
         ) : courses.length === 0 ? (
-          <p className="mt-6">
+          <p className="panel mt-6 text-center text-slate-600">
             You have not enrolled in any courses yet.
           </p>
         ) : (
@@ -101,7 +102,7 @@ async function unenroll(courseId) {
               
               <div
                 key={course.course_id}
-                className="rounded-xl border bg-white p-6"
+                className="panel"
               >
                 <h2 className="text-xl font-bold">
                   {course.course_name}
@@ -109,7 +110,7 @@ async function unenroll(courseId) {
                 <button
                   type="button"
                   onClick={() => unenroll(course.course_id)}
-                  className="mt-3 rounded-lg border border-red-300 px-4 py-2 text-red-600 hover:bg-red-50"
+                  className="mt-3 rounded-xl border border-red-200 px-4 py-2.5 text-sm font-semibold text-red-700 transition hover:bg-red-50"
                 >
                   Unenroll
                 </button>
@@ -123,7 +124,7 @@ async function unenroll(courseId) {
 
                 <Link
                   href={`/courses/${encodeURIComponent(course.course_id)}`}
-                  className="mt-4 inline-block text-blue-600"
+                  className="mt-4 inline-block font-semibold text-indigo-700 no-underline hover:text-indigo-900"
                 >
                   View Course
                 </Link>
