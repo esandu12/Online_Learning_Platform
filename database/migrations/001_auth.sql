@@ -1,4 +1,4 @@
--- Additive authentication migration. Safe to apply to an existing database:
+Tables-- Additive authentication migration. Safe to apply to an existing database:
 -- it does not alter or delete any existing platform rows or tables.
 CREATE TABLE IF NOT EXISTS auth_user (
   account_id CHAR(36) NOT NULL,
