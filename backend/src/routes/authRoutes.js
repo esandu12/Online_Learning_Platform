@@ -129,6 +129,34 @@ router.post("/instructors/signup", rateLimitAuth(), requireSameOrigin, async (re
   }
 });
 
+router.post("/admin/signup", rateLimitAuth(), requireSameOrigin, async (req, res, next) => {
+  const { name, email: rawEmail, password } = req.body || {};
+  const email = normalizeEmail(rawEmail);
+  if (typeof name !== "string" || name.trim().length < 2 || name.trim().length > 100 ||
+      !validateEmail(email) || !validatePassword(password)) {
+    return sendValidationError(res, "Enter a valid name, email, and password (at least 12 characters).");
+  }
+  try {
+    const [accounts] = await db.execute("SELECT account_id FROM auth_user WHERE email=?", [email]);
+    const [students] = await db.execute("SELECT student_id FROM student WHERE LOWER(email)=?", [email]);
+    const [instructors] = await db.execute("SELECT instructor_id FROM instructor WHERE LOWER(email)=?", [email]);
+    if (accounts.length || students.length || instructors.length) {
+      return res.status(409).json({ error: "An account or profile already uses this email" });
+    }
+    const accountId = randomUUID();
+    const passwordHash = await hashPassword(password);
+    await db.execute(
+      `INSERT INTO auth_user (account_id, email, password_hash, role, status)
+       VALUES (?, ?, ?, 'admin', 'pending')`,
+      [accountId, email, passwordHash]
+    );
+    return res.status(202).json({ message: "Your administrator access request is waiting for approval." });
+  } catch (error) {
+    if (error.code === "ER_DUP_ENTRY") return res.status(409).json({ error: "An account already uses this email" });
+    return next(error);
+  }
+});
+
 router.post("/login", rateLimitAuth({ maximum: 8 }), requireSameOrigin, async (req, res, next) => {
   const email = normalizeEmail(req.body?.email);
   const password = req.body?.password;
@@ -148,7 +176,12 @@ router.post("/login", rateLimitAuth({ maximum: 8 }), requireSameOrigin, async (r
     if (!user || !(await verifyPassword(password, user.password_hash))) {
       return res.status(401).json({ error: "Email or password is incorrect" });
     }
-    if (user.status === "pending") return res.status(403).json({ error: "Your instructor account is waiting for administrator approval." });
+    if (user.status === "pending") {
+      const pendingMessage = user.role === "admin"
+        ? "Your administrator access request is waiting for administrator approval."
+        : "Your instructor account is waiting for administrator approval.";
+      return res.status(403).json({ error: pendingMessage });
+    }
     if (user.status !== "active") return res.status(403).json({ error: "This account is disabled. Contact an administrator." });
     await createSession(user.account_id, res);
     return res.json({ user: safeUser(user) });
@@ -300,6 +333,30 @@ router.get("/admin/instructors", authenticate, requireRole("admin"), async (req,
        WHERE u.role='instructor' ORDER BY u.created_at DESC`
     );
     return res.json(rows);
+  } catch (error) { return next(error); }
+});
+
+router.get("/admin/pending-accounts", authenticate, requireRole("admin"), async (req, res, next) => {
+  try {
+    const [rows] = await db.execute(
+      `SELECT u.account_id, u.email, u.role, u.status, u.created_at,
+              i.instructor_name AS display_name, i.specialization
+       FROM auth_user u LEFT JOIN instructor i ON i.instructor_id=u.instructor_id
+       WHERE u.status='pending' AND u.role IN ('instructor', 'admin')
+       ORDER BY u.created_at ASC`
+    );
+    return res.json(rows);
+  } catch (error) { return next(error); }
+});
+
+router.post("/admin/accounts/:accountId/approve", authenticate, requireRole("admin"), requireSameOrigin, async (req, res, next) => {
+  try {
+    const [result] = await db.execute(
+      "UPDATE auth_user SET status='active' WHERE account_id=? AND role IN ('instructor','admin') AND status='pending'",
+      [req.params.accountId]
+    );
+    if (!result.affectedRows) return res.status(404).json({ error: "Pending account request not found" });
+    return res.json({ message: "Account request approved" });
   } catch (error) { return next(error); }
 });
 

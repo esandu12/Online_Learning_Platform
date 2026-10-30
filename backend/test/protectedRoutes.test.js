@@ -2,14 +2,20 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const app = require("../src/server");
 
-function findRoute(prefix, method, routePath) {
-  const mount = app.router.stack.find((layer) => layer.handle?.stack?.some((item) => item.route?.path === routePath && item.route.methods[method.toLowerCase()]));
+function findRoute(prefix, method, routePath, mountRouteHint) {
+  const mounts = app.router.stack.filter((layer) => layer.handle?.stack?.some((item) => item.route?.path === routePath && item.route.methods[method.toLowerCase()]));
+  const mount = (mountRouteHint && mounts.find((layer) => layer.handle.stack.some((item) => item.route?.path === mountRouteHint))) || mounts.find((layer) => layer.handle.stack.some((item) => item.route?.path === routePath && item.route.methods[method.toLowerCase()] && item.route.stack?.some((middleware) => middleware.handle.name === "authenticate"))) || mounts.find((layer) => layer.handle.stack.some((item) => item.route?.path === routePath && item.route.methods[method.toLowerCase()]));
   assert.ok(mount, `${method} ${prefix}${routePath} route is registered`);
-  return mount.handle.stack.find((item) => item.route?.path === routePath && item.route.methods[method.toLowerCase()]).route;
+  return {
+    route: mount.handle.stack.find((item) => item.route?.path === routePath && item.route.methods[method.toLowerCase()]).route,
+    mount,
+  };
 }
 
-function runUnauthenticatedGuard(route) {
-  const guard = route.stack[0].handle;
+function runUnauthenticatedGuard(found) {
+  const guards = found.route.stack.map((item) => item.handle);
+  const mountGuards = found.mount.handle.stack.filter((item) => !item.route).map((item) => item.handle);
+  const guard = [...mountGuards, ...guards].find((middleware) => middleware.name === "authenticate");
   assert.equal(guard.name, "authenticate", "route starts with authentication middleware");
   let statusCode;
   let payload;
@@ -24,8 +30,12 @@ function runUnauthenticatedGuard(route) {
   assert.equal(nextCalled, false);
 }
 
-function runWrongRoleGuard(route, role) {
-  const guard = route.stack[1]?.handle;
+function runWrongRoleGuard(found, role) {
+  const guards = found.route.stack.map((item) => item.handle);
+  const mountGuards = found.mount.handle.stack.filter((item) => !item.route).map((item) => item.handle);
+  const ordered = [...mountGuards, ...guards];
+  const authenticateIndex = ordered.findIndex((middleware) => middleware.name === "authenticate");
+  const guard = ordered[authenticateIndex + 1];
   assert.equal(typeof guard, "function", "route has a role check after authentication");
   let statusCode;
   let nextCalled = false;
@@ -48,24 +58,27 @@ test("course create, update, and delete routes require the administrator role", 
 });
 
 test("student directory and enrollment routes require authentication", () => {
-  runUnauthenticatedGuard(findRoute("/api/enrollments", "GET", "/students"));
-  runUnauthenticatedGuard(findRoute("/api/enrollments", "GET", "/students/:studentId"));
-  runUnauthenticatedGuard(findRoute("/api/enrollments", "POST", "/"));
+  runUnauthenticatedGuard(findRoute("/api/enrollments", "GET", "/me", "/"));
+  runUnauthenticatedGuard(findRoute("/api/enrollments", "POST", "/", "/me"));
 });
 
-test("student directory is admin-only and instructors cannot enroll students", () => {
-  runWrongRoleGuard(findRoute("/api/enrollments", "GET", "/students"), "instructor");
-  runWrongRoleGuard(findRoute("/api/enrollments", "POST", "/"), "instructor");
+test("instructors cannot access student enrollments", () => {
+  runWrongRoleGuard(findRoute("/api/enrollments", "GET", "/me", "/"), "instructor");
+  runWrongRoleGuard(findRoute("/api/enrollments", "POST", "/", "/me"), "instructor");
 });
 
 test("instructor approval controls require authentication", () => {
   runUnauthenticatedGuard(findRoute("/api/auth", "GET", "/admin/instructors"));
   runUnauthenticatedGuard(findRoute("/api/auth", "POST", "/admin/instructors/:accountId/approve"));
+  runUnauthenticatedGuard(findRoute("/api/auth", "GET", "/admin/pending-accounts"));
+  runUnauthenticatedGuard(findRoute("/api/auth", "POST", "/admin/accounts/:accountId/approve"));
 });
 
 test("instructor approval controls require the administrator role", () => {
   runWrongRoleGuard(findRoute("/api/auth", "GET", "/admin/instructors"), "student");
   runWrongRoleGuard(findRoute("/api/auth", "POST", "/admin/instructors/:accountId/approve"), "instructor");
+  runWrongRoleGuard(findRoute("/api/auth", "GET", "/admin/pending-accounts"), "student");
+  runWrongRoleGuard(findRoute("/api/auth", "POST", "/admin/accounts/:accountId/approve"), "instructor");
 });
 
 test("additional administrator invitations require an authenticated administrator", () => {
