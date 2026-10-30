@@ -1,12 +1,12 @@
 const express = require("express");
-const { randomUUID } = require("node:crypto");
+const { randomUUID, randomBytes, createHash } = require("node:crypto");
 const db = require("../config/db");
 const {
   normalizeEmail, validateEmail, validatePassword, validateBirthDate, hashPassword, verifyPassword,
   createSessionToken, createProfileId, safeUser,
 } = require("../auth/security");
 const {
-  authenticate, requireRole, requireSameOrigin, sessionCookie, clearSessionCookie,
+  authenticate, requireRole, requireMainAdmin, requireSameOrigin, sessionCookie, clearSessionCookie,
   rateLimitAuth,
 } = require("../auth/middleware");
 const { hashSessionToken } = require("../auth/security");
@@ -130,29 +130,38 @@ router.post("/instructors/signup", rateLimitAuth(), requireSameOrigin, async (re
 });
 
 router.post("/admin/signup", rateLimitAuth(), requireSameOrigin, async (req, res, next) => {
-  const { name, email: rawEmail, password } = req.body || {};
+  const { name, phone, reason = "", email: rawEmail } = req.body || {};
   const email = normalizeEmail(rawEmail);
   if (typeof name !== "string" || name.trim().length < 2 || name.trim().length > 100 ||
-      !validateEmail(email) || !validatePassword(password)) {
-    return sendValidationError(res, "Enter a valid name, email, and password (at least 12 characters).");
+      typeof phone !== "string" || phone.trim().length < 5 || phone.trim().length > 40 ||
+      typeof reason !== "string" || reason.trim().length > 1000 || !validateEmail(email)) {
+    return sendValidationError(res, "Enter a valid name, email, and contact phone number.");
   }
   try {
-    const [accounts] = await db.execute("SELECT account_id FROM auth_user WHERE email=?", [email]);
-    const [students] = await db.execute("SELECT student_id FROM student WHERE LOWER(email)=?", [email]);
-    const [instructors] = await db.execute("SELECT instructor_id FROM instructor WHERE LOWER(email)=?", [email]);
-    if (accounts.length || students.length || instructors.length) {
-      return res.status(409).json({ error: "An account or profile already uses this email" });
-    }
-    const accountId = randomUUID();
-    const passwordHash = await hashPassword(password);
-    await db.execute(
-      `INSERT INTO auth_user (account_id, email, password_hash, role, status)
-       VALUES (?, ?, ?, 'admin', 'pending')`,
-      [accountId, email, passwordHash]
-    );
-    return res.status(202).json({ message: "Your administrator access request is waiting for approval." });
+    const connection = await db.getConnection();
+    try {
+      await connection.beginTransaction();
+      const [accounts] = await connection.execute("SELECT account_id FROM auth_user WHERE email=?", [email]);
+      const [students] = await connection.execute("SELECT student_id FROM student WHERE LOWER(email)=?", [email]);
+      const [instructors] = await connection.execute("SELECT instructor_id FROM instructor WHERE LOWER(email)=?", [email]);
+      if (!accounts.length && !students.length && !instructors.length) {
+        const [pending] = await connection.execute("SELECT request_id FROM admin_access_request WHERE pending_email=? LIMIT 1 FOR UPDATE", [email]);
+        if (!pending.length) {
+          await connection.execute(
+            `INSERT INTO admin_access_request (request_id, name, email, phone, reason, status)
+             VALUES (?, ?, ?, ?, ?, 'pending')`,
+            [randomUUID(), name.trim(), email, phone.trim(), reason.trim() || null]
+          );
+        }
+      }
+      await connection.commit();
+      return res.status(202).json({ message: "Your request has been sent to the main administrator for review." });
+    } catch (error) {
+      await connection.rollback();
+      if (error.code === "ER_DUP_ENTRY") return res.status(202).json({ message: "Your request has been sent to the main administrator for review." });
+      throw error;
+    } finally { connection.release(); }
   } catch (error) {
-    if (error.code === "ER_DUP_ENTRY") return res.status(409).json({ error: "An account already uses this email" });
     return next(error);
   }
 });
@@ -262,7 +271,7 @@ router.post("/invitations/accept", rateLimitAuth(), requireSameOrigin, async (re
   } finally { connection.release(); }
 });
 
-router.post("/admin/invitations", authenticate, requireRole("admin"), requireSameOrigin, async (req, res, next) => {
+router.post("/admin/invitations", authenticate, requireMainAdmin, requireSameOrigin, async (req, res, next) => {
   const email = normalizeEmail(req.body?.email);
   if (!validateEmail(email)) return sendValidationError(res, "Enter a valid administrator email.");
   try {
@@ -336,23 +345,105 @@ router.get("/admin/instructors", authenticate, requireRole("admin"), async (req,
   } catch (error) { return next(error); }
 });
 
-router.get("/admin/pending-accounts", authenticate, requireRole("admin"), async (req, res, next) => {
+router.get("/admin/is-main-admin", authenticate, requireRole("admin"), async (req, res, next) => {
+  try {
+    const [rows] = await db.execute("SELECT account_id FROM auth_admin_owner WHERE owner_id=1 AND account_id=?", [req.user.account_id]);
+    return res.json({ isMainAdmin: rows.length > 0 });
+  } catch (error) { return next(error); }
+});
+
+router.get("/admin/access-requests", authenticate, requireMainAdmin, async (req, res, next) => {
   try {
     const [rows] = await db.execute(
-      `SELECT u.account_id, u.email, u.role, u.status, u.created_at,
-              i.instructor_name AS display_name, i.specialization
-       FROM auth_user u LEFT JOIN instructor i ON i.instructor_id=u.instructor_id
-       WHERE u.status='pending' AND u.role IN ('instructor', 'admin')
-       ORDER BY u.created_at ASC`
+      `SELECT request_id, name, email, phone, reason, status, invitation_id, created_at, decided_at
+       FROM admin_access_request ORDER BY created_at DESC LIMIT 100`
     );
     return res.json(rows);
+  } catch (error) { return next(error); }
+});
+
+router.post("/admin/access-requests/:requestId/approve", authenticate, requireMainAdmin, requireSameOrigin, async (req, res, next) => {
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [rows] = await connection.execute(
+      "SELECT request_id, email, status FROM admin_access_request WHERE request_id=? FOR UPDATE",
+      [req.params.requestId]
+    );
+    if (!rows.length || rows[0].status !== "pending") {
+      await connection.rollback();
+      return res.status(404).json({ error: "Pending administrator request not found" });
+    }
+    const request = rows[0];
+    const [accounts] = await connection.execute("SELECT account_id FROM auth_user WHERE email=?", [request.email]);
+    const [students] = await connection.execute("SELECT student_id FROM student WHERE LOWER(email)=?", [request.email]);
+    const [instructors] = await connection.execute("SELECT instructor_id FROM instructor WHERE LOWER(email)=?", [request.email]);
+    if (accounts.length || students.length || instructors.length) {
+      await connection.rollback();
+      return res.status(409).json({ error: "An account or profile already uses this email. The request cannot be approved." });
+    }
+    const token = randomBytes(32).toString("base64url");
+    const tokenHash = createHash("sha256").update(token).digest("hex");
+    const invitationId = randomUUID();
+    await connection.execute(
+      `INSERT INTO admin_invitation (invitation_id, email, token_hash, expires_at, created_by)
+       VALUES (?, ?, ?, DATE_ADD(UTC_TIMESTAMP(), INTERVAL 7 DAY), ?)`,
+      [invitationId, request.email, tokenHash, req.user.account_id]
+    );
+    await connection.execute(
+      `UPDATE admin_access_request SET status='approved', invitation_id=?, decided_by=?, decided_at=UTC_TIMESTAMP()
+       WHERE request_id=? AND status='pending'`,
+      [invitationId, req.user.account_id, request.request_id]
+    );
+    await connection.commit();
+    const origin = (process.env.FRONTEND_ORIGIN || "http://localhost:3000").replace(/\/$/, "");
+    return res.status(201).json({
+      invitation: `${origin}/invitations/admin/accept?token=${token}`,
+      email: request.email,
+      expiresInDays: 7,
+    });
+  } catch (error) {
+    await connection.rollback();
+    return next(error);
+  } finally { connection.release(); }
+});
+
+router.post("/admin/access-requests/:requestId/reject", authenticate, requireMainAdmin, requireSameOrigin, async (req, res, next) => {
+  try {
+    const [result] = await db.execute(
+      `UPDATE admin_access_request SET status='rejected', decided_by=?, decided_at=UTC_TIMESTAMP()
+       WHERE request_id=? AND status='pending'`,
+      [req.user.account_id, req.params.requestId]
+    );
+    if (!result.affectedRows) return res.status(404).json({ error: "Pending administrator request not found" });
+    return res.json({ message: "Administrator request rejected" });
+  } catch (error) { return next(error); }
+});
+
+router.get("/admin/pending-accounts", authenticate, requireRole("admin"), async (req, res, next) => {
+  try {
+    const [instructors] = await db.execute(
+      `SELECT u.account_id, u.email, u.role, u.status, u.created_at,
+              i.instructor_name AS display_name, i.specialization
+       FROM auth_user u JOIN instructor i ON i.instructor_id=u.instructor_id
+       WHERE u.status='pending' AND u.role='instructor'
+       ORDER BY u.created_at ASC`
+    );
+    const [owners] = await db.execute("SELECT account_id FROM auth_admin_owner WHERE owner_id=1 AND account_id=?", [req.user.account_id]);
+    if (!owners.length) return res.json(instructors);
+    const [requests] = await db.execute(
+      `SELECT request_id AS account_id, request_id, email, 'admin' AS role, status,
+              name AS display_name, phone, reason, created_at
+       FROM admin_access_request WHERE status='pending' ORDER BY created_at ASC`
+    );
+    return res.json([...instructors, ...requests]);
   } catch (error) { return next(error); }
 });
 
 router.post("/admin/accounts/:accountId/approve", authenticate, requireRole("admin"), requireSameOrigin, async (req, res, next) => {
   try {
     const [result] = await db.execute(
-      "UPDATE auth_user SET status='active' WHERE account_id=? AND role IN ('instructor','admin') AND status='pending'",
+      "UPDATE auth_user SET status='active' WHERE account_id=? AND role='instructor' AND status='pending'",
       [req.params.accountId]
     );
     if (!result.affectedRows) return res.status(404).json({ error: "Pending account request not found" });

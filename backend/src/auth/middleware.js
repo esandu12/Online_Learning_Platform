@@ -56,6 +56,17 @@ function requireRole(...roles) {
   };
 }
 
+function requireMainAdmin(req, res, next) {
+  if (!req.user || req.user.role !== "admin") {
+    return res.status(req.user ? 403 : 401).json({ error: "You do not have permission to do that" });
+  }
+  return db.execute("SELECT account_id FROM auth_admin_owner WHERE owner_id=1 AND account_id=?", [req.user.account_id])
+    .then(([rows]) => rows.length
+      ? next()
+      : res.status(403).json({ error: "Only the main administrator can manage administrator access requests" }))
+    .catch(next);
+}
+
 function canViewStudentEnrollments(user, studentId) {
   return Boolean(user && (user.role === "admin" || (user.role === "student" && user.student_id === studentId)));
 }
@@ -89,4 +100,4 @@ function requireSameOrigin(req, res, next) {
   return next();
 }
 
-module.exports = { COOKIE_NAME, authenticate, requireRole, canViewStudentEnrollments, rateLimitAuth, requireSameOrigin, sessionCookie, clearSessionCookie, readCookie };
+module.exports = { COOKIE_NAME, authenticate, requireRole, requireMainAdmin, canViewStudentEnrollments, rateLimitAuth, requireSameOrigin, sessionCookie, clearSessionCookie, readCookie };

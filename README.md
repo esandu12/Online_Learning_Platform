@@ -8,8 +8,8 @@ LearnSpace is a local online learning platform for browsing courses, enrolling a
 - View course details, instructor information, lessons, assignments, and quizzes.
 - Create student accounts and view a personal profile and course enrollments.
 - Apply for instructor access. An administrator must approve the application before the instructor can sign in.
-- Request administrator access. An existing administrator must approve the request before the new account can sign in.
-- Invite instructors or administrators with a one-time invitation link that expires after seven days.
+- Request administrator access. The main administrator reviews contact details and, if approved, issues a one-time password setup invitation.
+- Invite instructors with a one-time link. Administrator invitations are limited to the main admin and expire after seven days.
 - Create and manage courses. Instructors can manage their own courses; administrators can manage all courses.
 - Use protected role-based dashboards and account navigation.
 - Store passwords as salted scrypt hashes and use seven-day sessions in HttpOnly cookies.
@@ -27,11 +27,12 @@ LearnSpace is a local online learning platform for browsing courses, enrolling a
 
 Use the existing `online_learning_platform` database. The reference dump at `database/schema.sql` contains `DROP TABLE` statements; do not import it over a database that contains data.
 
-From the repository root, apply the two additive authentication migrations once, in order:
+From the repository root, apply the additive authentication migrations in order. The third migration records the earliest active administrator as the main admin if an owner has not already been recorded:
 
 ```sh
 mysql -u YOUR_MYSQL_USER -p online_learning_platform < database/migrations/001_auth.sql
 mysql -u YOUR_MYSQL_USER -p online_learning_platform < database/migrations/002_admin_invitations.sql
+mysql -u YOUR_MYSQL_USER -p online_learning_platform < database/migrations/003_admin_access_requests.sql
 ```
 
 These migrations add authentication and invitation tables. They do not replace or delete the existing course, student, or instructor records. The database must already contain the base platform tables, including `student` and `instructor`.
@@ -93,15 +94,15 @@ NEXT_PUBLIC_API_URL=http://localhost:5001/api npm run dev
 
 - **Student:** Register from Create account. A student account is activated immediately and the user is signed in.
 - **Instructor:** Register as an instructor. The application appears in the administrator dashboard. The instructor can sign in after an administrator approves it.
-- **Administrator:** Request administrator access from Create account. The request appears in the administrator dashboard and remains pending until an existing administrator approves it.
-- **Invitations:** An administrator can also create one-time instructor or administrator invitations from the invitation tools. Invitation links expire after seven days.
-- **Sign-in:** After approval, use the same email and password used when requesting access. The navigation bar displays the signed-in account and its role dashboard while moving between pages.
+- **Administrator:** Request administrator access from Create account. The request appears in the main administrator dashboard. Approval issues a seven-day one-time invitation tied to the submitted email; the applicant sets a password before an active account is created.
+- **Invitations:** Administrators can create instructor invitations. Only the main administrator can create administrator invitations. Invitation links expire after seven days and can be used once.
+- **Sign-in:** After instructor approval, use the email and password set during application. After administrator approval, use the invitation link to set a password, then sign in. The navigation bar displays the signed-in account and its role dashboard while moving between pages.
 
 ## Role permissions
 
 - Students can enroll in courses and view their own enrollments.
 - Instructors can view and manage courses assigned to their instructor profile.
-- Administrators can review pending instructor and administrator requests and manage all courses.
+- Administrators can review pending instructor requests and manage all courses. Only the main administrator can review administrator access requests, issue admin invitations, and approve those invitations.
 - API endpoints check the authenticated session and the required role. The server does not trust a role supplied by the browser.
 
 ## Development checks

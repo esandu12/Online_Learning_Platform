@@ -13,6 +13,7 @@ export default function AdminDashboard() {
   const [approvingId, setApprovingId] = useState("");
   const [notice, setNotice] = useState("");
   const [approvalError, setApprovalError] = useState("");
+  const [adminInvitation, setAdminInvitation] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -66,18 +67,36 @@ export default function AdminDashboard() {
   }
 
   async function approve(account) {
-    setApprovingId(account.account_id);
+    const accountId = account.account_id || account.request_id;
+    setApprovingId(accountId);
     setApprovalError("");
     setNotice("");
     try {
-      await apiRequest(`/auth/admin/accounts/${encodeURIComponent(account.account_id)}/approve`, { method: "POST" });
-      setPendingAccounts((current) => current.filter((item) => item.account_id !== account.account_id));
-      setNotice(`${account.role === "admin" ? "Administrator access" : "Instructor application"} approved. They can sign in now.`);
+      if (account.role === "admin") {
+        const result = await apiRequest(`/auth/admin/access-requests/${encodeURIComponent(account.request_id)}/approve`, { method: "POST" });
+        setAdminInvitation(result.invitation);
+        setNotice(`Approved ${result.email}. Share the private invitation link below so they can set a password.`);
+      } else {
+        await apiRequest(`/auth/admin/accounts/${encodeURIComponent(accountId)}/approve`, { method: "POST" });
+        setNotice("Instructor application approved. They can sign in now.");
+      }
+      setPendingAccounts((current) => current.filter((item) => (item.account_id || item.request_id) !== accountId));
     } catch (err) {
       setApprovalError(err.message);
     } finally {
       setApprovingId("");
     }
+  }
+
+  async function rejectAdminRequest(request) {
+    setApprovingId(request.request_id);
+    setApprovalError(""); setNotice("");
+    try {
+      await apiRequest(`/auth/admin/access-requests/${encodeURIComponent(request.request_id)}/reject`, { method: "POST" });
+      setPendingAccounts((current) => current.filter((item) => item.request_id !== request.request_id));
+      setNotice("Administrator access request rejected.");
+    } catch (err) { setApprovalError(err.message); }
+    finally { setApprovingId(""); }
   }
 
   if (loading) return <main className="app-page" role="status"><div className="app-container panel">Loading your dashboard…</div></main>;
@@ -123,7 +142,7 @@ export default function AdminDashboard() {
         ) : (
           <ul className="mt-5 divide-y divide-slate-100">
             {pendingAccounts.map((account) => (
-              <li key={account.account_id} className="flex flex-col gap-4 py-4 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between">
+              <li key={account.account_id || account.request_id} className="flex flex-col gap-4 py-4 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0">
                   <p className="font-semibold text-slate-900">{account.display_name || account.email}</p>
                   <p className="mt-1 break-all text-sm text-slate-600">{account.email}</p>
@@ -131,21 +150,21 @@ export default function AdminDashboard() {
                     {account.role === "admin" ? "Administrator access request" : "Instructor application"}
                     {account.specialization ? ` · ${account.specialization}` : ""}
                   </p>
+                  {account.role === "admin" && <><p className="mt-1 text-sm text-slate-500">Contact: {account.phone}</p>{account.reason && <p className="mt-1 whitespace-pre-wrap text-sm text-slate-600">{account.reason}</p>}</>}
                 </div>
-                <button
-                  type="button"
-                  onClick={() => approve(account)}
-                  disabled={Boolean(approvingId)}
-                  className="shrink-0 rounded-xl bg-indigo-700 px-5 py-3 font-semibold text-white shadow-sm transition hover:bg-indigo-800 disabled:cursor-wait disabled:opacity-60"
-                >
-                  {approvingId === account.account_id ? "Approving…" : "Approve request"}
-                </button>
+                <div className="flex shrink-0 gap-2">
+                  <button type="button" onClick={() => approve(account)} disabled={Boolean(approvingId)} className="rounded-xl bg-indigo-700 px-5 py-3 font-semibold text-white shadow-sm transition hover:bg-indigo-800 disabled:cursor-wait disabled:opacity-60">
+                    {approvingId === (account.account_id || account.request_id) ? "Approving…" : account.role === "admin" ? "Approve and invite" : "Approve request"}
+                  </button>
+                  {account.role === "admin" && <button type="button" onClick={() => rejectAdminRequest(account)} disabled={Boolean(approvingId)} className="rounded-xl border border-slate-300 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60">Reject</button>}
+                </div>
               </li>
             ))}
           </ul>
         )}
         {approvalError && <p className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-800" role="alert">{approvalError}</p>}
         {notice && <p className="mt-4 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800" role="status">{notice}</p>}
+        {adminInvitation && <div className="mt-4 rounded-xl border border-indigo-100 bg-indigo-50 p-4"><p className="text-sm font-medium text-indigo-950">Private one-time administrator invite link. Share it only with the approved email address:</p><input readOnly aria-label="Private administrator invitation link" value={adminInvitation} className="mt-2 w-full rounded border bg-white p-2 text-sm" onFocus={(event) => event.target.select()} /></div>}
       </section>
 
       <div className="flex flex-wrap gap-3">

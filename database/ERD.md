@@ -24,6 +24,9 @@ erDiagram
   AUTH_USER o|--o| STUDENT : account_for
   AUTH_USER o|--o| INSTRUCTOR : account_for
   AUTH_USER ||--o{ INSTRUCTOR_INVITATION : creates
+  AUTH_USER ||--o{ ADMIN_INVITATION : creates
+  AUTH_ADMIN_OWNER ||--o{ ADMIN_ACCESS_REQUEST : decides
+  ADMIN_INVITATION o|--o| ADMIN_ACCESS_REQUEST : issued_for
 
   CATEGORY {
     varchar category_id PK
@@ -123,8 +126,31 @@ erDiagram
     datetime expires_at
     char created_by FK
   }
+  AUTH_ADMIN_OWNER {
+    tinyint owner_id PK
+    char account_id FK
+    timestamp assigned_at
+  }
+  ADMIN_ACCESS_REQUEST {
+    char request_id PK
+    varchar name
+    varchar email
+    varchar phone
+    varchar reason
+    enum status
+    char invitation_id FK
+    char decided_by FK
+  }
+  ADMIN_INVITATION {
+    char invitation_id PK
+    varchar email
+    char token_hash UK
+    datetime expires_at
+    datetime accepted_at
+    char created_by FK
+  }
 ```
 
 Primary and foreign keys above follow the current SQL schema. The enrollment primary key is the `(student_id, course_id)` pair, which prevents a duplicate enrollment for the same student and course.
 
-The authentication tables are added by `migrations/001_auth.sql`; the original schema dump remains unchanged.
+Authentication and invitation tables are added by `migrations/001_auth.sql`, `migrations/002_admin_invitations.sql`, and `migrations/003_admin_access_requests.sql`; the original schema dump remains unchanged.

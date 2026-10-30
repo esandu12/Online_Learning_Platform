@@ -12,11 +12,13 @@ async function main() {
   const [existing] = await db.execute("SELECT account_id FROM auth_user WHERE email=?", [email]);
   if (existing.length) throw new Error("An account already uses that email; no account was changed.");
   const passwordHash = await hashPassword(password);
+  const accountId = randomUUID();
   await db.execute(
     `INSERT INTO auth_user (account_id, email, password_hash, role, status)
      VALUES (?, ?, ?, 'admin', 'active')`,
-    [randomUUID(), email, passwordHash]
+    [accountId, email, passwordHash]
   );
+  await db.execute("INSERT IGNORE INTO auth_admin_owner (owner_id, account_id) VALUES (1, ?)", [accountId]);
   process.stdout.write(`Administrator account created for ${email}\n`);
 }
 
