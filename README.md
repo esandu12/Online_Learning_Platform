@@ -1,99 +1,143 @@
-# Online Learning Platform
+# LearnSpace Online Learning Platform
 
-A local learning platform with student and instructor registration, administrator sign-in, course browsing, enrollment, and protected course management. The application uses Next.js, Express, and MySQL.
+LearnSpace is a local online learning platform for browsing courses, enrolling as a student, teaching courses as an instructor, and managing platform access as an administrator. It is built with Next.js, Express, and MySQL.
 
 ## Features
 
-- Course catalog with keyword search, category and level filters, and price sorting.
-- Course details with instructor, lessons, assignments, and quizzes.
-- Student self-registration and sign-in with private enrollment dashboards.
-- Instructor applications that require admin approval, plus one-time admin invitations.
-- Administrator sign-in and protected instructor/course management.
-- Student enrollment with duplicate and invalid-reference feedback.
-- Course create, read, update, and delete screens backed by MySQL; only admins can change courses.
-- Passwords stored as salted scrypt hashes and seven-day opaque sessions in HttpOnly cookies.
-- Client and server validation, loading and empty states, and readable API errors.
-- Responsive layouts for small and wide screens.
+- Browse courses and filter by text, category, and level; sort by course name or price.
+- View course details, instructor information, lessons, assignments, and quizzes.
+- Create student accounts and view a personal profile and course enrollments.
+- Apply for instructor access. An administrator must approve the application before the instructor can sign in.
+- Request administrator access. An existing administrator must approve the request before the new account can sign in.
+- Invite instructors or administrators with a one-time invitation link that expires after seven days.
+- Create and manage courses. Instructors can manage their own courses; administrators can manage all courses.
+- Use protected role-based dashboards and account navigation.
+- Store passwords as salted scrypt hashes and use seven-day sessions in HttpOnly cookies.
 
-## Requirements
+## Technology
 
-- Node.js 20 or newer and npm.
-- MySQL 8.x with the existing `online_learning_platform` schema and data.
+- Web: Next.js 16, React 19, and Tailwind CSS 4
+- API: Node.js and Express 5
+- Database: MySQL
+- Runtime: Node.js 20.9 or newer and npm
 
 ## Run locally
 
-1. Keep the existing MySQL database and its data in place. Do not import the supplied dump over an existing database.
-2. In `backend`, copy `.env.example` to `.env` and set the connection values for the existing database. Never commit `.env`.
-3. Apply the additive authentication migrations in order from the repository root. They create only new authentication tables and preserve existing rows:
+### 1. Prepare the existing database
 
-   ```sh
-   mysql -u YOUR_MYSQL_USER -p online_learning_platform < database/migrations/001_auth.sql
-   mysql -u YOUR_MYSQL_USER -p online_learning_platform < database/migrations/002_admin_invitations.sql
-   ```
+Use the existing `online_learning_platform` database. The reference dump at `database/schema.sql` contains `DROP TABLE` statements; do not import it over a database that contains data.
 
-4. Create the first administrator. Temporarily set `ADMIN_EMAIL` and `ADMIN_PASSWORD` (at least 12 characters) in ignored `backend/.env`, then run:
-
-   ```sh
-   cd backend
-   npm install
-   npm run admin:create
-   ```
-
-   Remove those two bootstrap values from `.env` after the account is created. Admin signup is not available on the public site. An existing admin can invite another administrator from the admin dashboard; the one-time invitation expires after seven days, and the invitee sets their own password.
-
-   To replace the password for an existing admin, set a new `ADMIN_PASSWORD` for that admin's `ADMIN_EMAIL` in the ignored `.env`, then run `npm run admin:reset-password` from `backend`. This updates the stored hash and revokes that account's existing sessions. Remove the temporary values after success.
-
-5. Install and start the API:
-
-   ```sh
-   npm run dev
-   ```
-
-6. In a second terminal, optionally set `NEXT_PUBLIC_API_URL` if the API is not at its default local address. Install and start the web app:
-
-   ```sh
-   cd frontend
-   npm install
-   npm run dev
-   ```
-
-7. Open <http://localhost:3000>. The API health endpoint is <http://127.0.0.1:5001/api/health>.
-
-## Tests and checks
+From the repository root, apply the two additive authentication migrations once, in order:
 
 ```sh
-cd backend && npm test
-cd ../frontend && npm run lint && npm run build
+mysql -u YOUR_MYSQL_USER -p online_learning_platform < database/migrations/001_auth.sql
+mysql -u YOUR_MYSQL_USER -p online_learning_platform < database/migrations/002_admin_invitations.sql
 ```
 
-Backend tests cover validation, password hashing, session-cookie settings, role checks, and student enrollment ownership without changing MySQL data. A successful build or unit test does not by itself verify the live database migration or connection.
+These migrations add authentication and invitation tables. They do not replace or delete the existing course, student, or instructor records. The database must already contain the base platform tables, including `student` and `instructor`.
 
-## Database safety
+### 2. Configure the API
 
-`database/schema.sql` documents the project schema and contains destructive `DROP TABLE IF EXISTS` statements from the original dump. Treat it as a reference for an empty disposable database only; do not run it against the existing local database. The app does not seed, migrate, or reset database contents during startup. Apply `database/migrations/001_auth.sql` and `database/migrations/002_admin_invitations.sql` manually once, in order; both are additive and leave existing tables and records untouched. Course deletion is protected by foreign keys and returns a conflict when related records exist.
+Create `backend/.env` from the example and set the MySQL connection values:
 
-See [the ERD](database/ERD.md) for tables, keys, and relationships. The two `page.js` files serve different routes: `frontend/src/app/page.js` is the catalog at `/`, while `frontend/src/app/courses/[id]/page.js` is the dynamic course details route at `/courses/:id`.
+```sh
+cd backend
+cp .env.example .env
+```
 
-## Access control
+Set `DB_HOST`, `DB_USER`, `DB_PASSWORD`, and `DB_NAME` in `backend/.env`. The default API port is `5001`; the default allowed web origin is `http://localhost:3000`. Keep `.env` private and never commit it.
 
-- Students can see only their own enrollments and can enroll only themselves. The student directory endpoint is admin-only.
-- Only admins can create, update, or delete courses, review instructor applications, and create instructor or administrator invitations.
-- Instructors can see only courses assigned to their instructor profile. Public instructor signup remains pending until an admin approves it.
-- Public signup supports students and instructors, but not admins. Student signup creates a session and opens the student dashboard. Instructor signup shows a pending-approval page; after approval, the same credentials can be used to sign in. The first admin is bootstrapped from the local CLI after applying the migrations.
-- Session identifiers are random, stored only as SHA-256 hashes in MySQL, and sent in HttpOnly, SameSite=Lax cookies. Production mode also sets Secure. Keep the frontend and API on the same site for local cookie behavior.
-- Login and signup endpoints have per-IP in-memory throttling. For public deployment, use a shared rate limiter and HTTPS, and review operational controls before production use.
+### 3. Install dependencies and create the first administrator
 
-## Prototype limitations
+In the `backend` directory, install packages:
 
-- This remains a local classroom prototype without payment processing or production hosting controls.
-- Student self-registration creates a new student record; it does not claim or attach an existing student record by email. Existing profile-only rows have no stored password to verify, so they need a separate verified account-claim process before they can sign in.
-- Course deletion can be blocked by linked lessons, assessments, enrollments, payments, or certificates.
-- The repository does not contain a database backup or student dataset. Keep those local and outside Git.
+```sh
+npm ci
+```
 
-## Project structure
+Set `ADMIN_EMAIL` and `ADMIN_PASSWORD` in `backend/.env`. The password must be at least 12 characters. Create the first administrator:
+
+```sh
+npm run admin:create
+```
+
+After success, remove the temporary `ADMIN_EMAIL` and `ADMIN_PASSWORD` values from `.env`. The first administrator is created by this local command; public requests for administrator access cannot create the first administrator without an existing administrator to review them.
+
+### 4. Start the API
+
+From `backend`:
+
+```sh
+npm run dev
+```
+
+The API starts at `http://localhost:5001`. Its health check is `http://localhost:5001/api/health`.
+
+### 5. Start the web app
+
+In a second terminal, from the repository root:
+
+```sh
+cd frontend
+npm ci
+npm run dev
+```
+
+Open `http://localhost:3000`. The web app uses `http://localhost:5001/api` by default. To use another API URL, set `NEXT_PUBLIC_API_URL` before starting or building the frontend. For example:
+
+```sh
+NEXT_PUBLIC_API_URL=http://localhost:5001/api npm run dev
+```
+
+## Account workflows
+
+- **Student:** Register from Create account. A student account is activated immediately and the user is signed in.
+- **Instructor:** Register as an instructor. The application appears in the administrator dashboard. The instructor can sign in after an administrator approves it.
+- **Administrator:** Request administrator access from Create account. The request appears in the administrator dashboard and remains pending until an existing administrator approves it.
+- **Invitations:** An administrator can also create one-time instructor or administrator invitations from the invitation tools. Invitation links expire after seven days.
+- **Sign-in:** After approval, use the same email and password used when requesting access. The navigation bar displays the signed-in account and its role dashboard while moving between pages.
+
+## Role permissions
+
+- Students can enroll in courses and view their own enrollments.
+- Instructors can view and manage courses assigned to their instructor profile.
+- Administrators can review pending instructor and administrator requests and manage all courses.
+- API endpoints check the authenticated session and the required role. The server does not trust a role supplied by the browser.
+
+## Development checks
+
+Run the backend tests:
+
+```sh
+cd backend
+npm test
+```
+
+Run the frontend lint and production build:
+
+```sh
+cd frontend
+npm run lint
+npm run build
+```
+
+The backend tests cover validation, password hashing, session settings, role protections, and enrollment access. These checks do not apply database migrations or verify a live MySQL connection; test database-backed workflows with a development database.
+
+## Database and security notes
+
+- Do not run `database/schema.sql` against a database with data. It includes destructive `DROP TABLE IF EXISTS` statements and is for reference or a disposable database only.
+- Apply `database/migrations/001_auth.sql` and `database/migrations/002_admin_invitations.sql` manually, once, and in order. The app does not migrate, seed, reset, or back up database records on startup.
+- Student registration creates a new student record. It does not claim or connect an existing student row with the same email.
+- Course deletion can be rejected when related lessons, assessments, enrollments, payments, or certificates exist.
+- Sessions expire after seven days. Session identifiers are random; only their hashes are stored in MySQL. Cookies are HttpOnly and SameSite=Lax; production mode also sets Secure.
+- Login and registration endpoints use in-memory per-IP throttling. Before public deployment, use HTTPS and review rate limiting, secrets, backups, monitoring, and database access controls.
+
+## Project layout
 
 ```text
-backend/       Express API, MySQL pool, route validation, and tests
-database/      Existing SQL schema reference and ERD
-frontend/      Next.js app router interface
+backend/       Express API, authentication, MySQL access, and tests
+database/      SQL schema reference, migrations, and ERD
+frontend/      Next.js web application
 ```
+
+See `database/ERD.md` for the database relationships. The course catalog is `/`; course detail pages use `/courses/:id`.
