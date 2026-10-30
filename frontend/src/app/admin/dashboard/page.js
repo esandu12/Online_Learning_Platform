@@ -11,6 +11,7 @@ export default function AdminDashboard() {
   const [pendingAccounts, setPendingAccounts] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
   const [approvingId, setApprovingId] = useState("");
+  const [processingAction, setProcessingAction] = useState("");
   const [notice, setNotice] = useState("");
   const [approvalError, setApprovalError] = useState("");
   const [adminInvitation, setAdminInvitation] = useState("");
@@ -69,6 +70,7 @@ export default function AdminDashboard() {
   async function approve(account) {
     const accountId = account.account_id || account.request_id;
     setApprovingId(accountId);
+    setProcessingAction("approve");
     setApprovalError("");
     setNotice("");
     try {
@@ -85,18 +87,32 @@ export default function AdminDashboard() {
       setApprovalError(err.message);
     } finally {
       setApprovingId("");
+      setProcessingAction("");
     }
   }
 
   async function rejectAdminRequest(request) {
     setApprovingId(request.request_id);
+    setProcessingAction("reject");
     setApprovalError(""); setNotice("");
     try {
       await apiRequest(`/auth/admin/access-requests/${encodeURIComponent(request.request_id)}/reject`, { method: "POST" });
       setPendingAccounts((current) => current.filter((item) => item.request_id !== request.request_id));
       setNotice("Administrator access request rejected.");
     } catch (err) { setApprovalError(err.message); }
-    finally { setApprovingId(""); }
+    finally { setApprovingId(""); setProcessingAction(""); }
+  }
+
+  async function rejectInstructorApplication(account) {
+    setApprovingId(account.account_id);
+    setProcessingAction("reject");
+    setApprovalError(""); setNotice("");
+    try {
+      await apiRequest(`/auth/admin/accounts/${encodeURIComponent(account.account_id)}/reject`, { method: "POST" });
+      setPendingAccounts((current) => current.filter((item) => item.account_id !== account.account_id));
+      setNotice("Instructor application rejected.");
+    } catch (err) { setApprovalError(err.message); }
+    finally { setApprovingId(""); setProcessingAction(""); }
   }
 
   if (loading) return <main className="app-page" role="status"><div className="app-container panel">Loading your dashboard…</div></main>;
@@ -154,9 +170,11 @@ export default function AdminDashboard() {
                 </div>
                 <div className="flex shrink-0 gap-2">
                   <button type="button" onClick={() => approve(account)} disabled={Boolean(approvingId)} className="rounded-xl bg-indigo-700 px-5 py-3 font-semibold text-white shadow-sm transition hover:bg-indigo-800 disabled:cursor-wait disabled:opacity-60">
-                    {approvingId === (account.account_id || account.request_id) ? "Approving…" : account.role === "admin" ? "Approve and invite" : "Approve request"}
+                    {approvingId === (account.account_id || account.request_id) ? processingAction === "reject" ? "Processing…" : "Approving…" : account.role === "admin" ? "Approve and invite" : "Approve request"}
                   </button>
-                  {account.role === "admin" && <button type="button" onClick={() => rejectAdminRequest(account)} disabled={Boolean(approvingId)} className="rounded-xl border border-slate-300 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60">Reject</button>}
+                  <button type="button" onClick={() => account.role === "admin" ? rejectAdminRequest(account) : rejectInstructorApplication(account)} disabled={Boolean(approvingId)} className="rounded-xl border border-slate-300 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60">
+                    {approvingId === (account.account_id || account.request_id) ? processingAction === "reject" ? "Rejecting…" : "Reject" : "Reject"}
+                  </button>
                 </div>
               </li>
             ))}

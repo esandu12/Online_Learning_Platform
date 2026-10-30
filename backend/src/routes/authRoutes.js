@@ -451,6 +451,17 @@ router.post("/admin/accounts/:accountId/approve", authenticate, requireRole("adm
   } catch (error) { return next(error); }
 });
 
+router.post("/admin/accounts/:accountId/reject", authenticate, requireRole("admin"), requireSameOrigin, async (req, res, next) => {
+  try {
+    const [result] = await db.execute(
+      "UPDATE auth_user SET status='disabled' WHERE account_id=? AND role='instructor' AND status='pending'",
+      [req.params.accountId]
+    );
+    if (!result.affectedRows) return res.status(404).json({ error: "Pending instructor application not found" });
+    return res.json({ message: "Instructor application rejected" });
+  } catch (error) { return next(error); }
+});
+
 router.post("/admin/instructors/:accountId/approve", authenticate, requireRole("admin"), requireSameOrigin, async (req, res, next) => {
   try {
     const [result] = await db.execute(
